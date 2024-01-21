@@ -1,24 +1,24 @@
 const std = @import("std");
+const mach_core = @import("mach_core");
 
-pub fn build(b: *std.Build) void {
+pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const exe = b.addExecutable(.{
-        .name = "medoh",
-        .root_source_file = .{ .path = "src/main.zig" },
+    const mach_core_dep = b.dependency("mach_core", .{
         .target = target,
         .optimize = optimize,
     });
-    b.installArtifact(exe);
 
-    const run_cmd = b.addRunArtifact(exe);
-    run_cmd.step.dependOn(b.getInstallStep());
-
-    if (b.args) |args| {
-        run_cmd.addArgs(args);
-    }
+    const app = try mach_core.App.init(b, mach_core_dep.builder, .{
+        .name = "model-viewer",
+        .src = "src/main.zig",
+        .target = target,
+        .optimize = optimize,
+        .deps = &[_]std.Build.Module.Import{},
+    });
+    if (b.args) |args| app.run.addArgs(args);
 
     const run_step = b.step("run", "Run the app");
-    run_step.dependOn(&run_cmd.step);
+    run_step.dependOn(&app.run.step);
 }
