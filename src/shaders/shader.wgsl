@@ -4,31 +4,12 @@ struct VertexOutput {
 };
 
 @vertex fn vertex_main(
-    @builtin(vertex_index) VertexIndex : u32
+    @location(0) pos : vec2<f32>,
+    @location(1) col : vec3<f32>,
 ) -> VertexOutput {
-    var pos = array<vec2<f32>, 6>(
-        vec2<f32>( 0.5,  0.5),
-        vec2<f32>(-0.5, -0.5),
-        vec2<f32>( 0.5, -0.5),
-        
-        vec2<f32>(-0.5,  0.5),
-        vec2<f32>(-0.5, -0.5),
-        vec2<f32>( 0.5,  0.5)
-    );
-    var col = array<vec3<f32>, 6>(
-        vec3<f32>(1,0,0),
-        vec3<f32>(0,1,0),
-        vec3<f32>(0,0,1),
-        
-        
-        vec3<f32>(0,1,1),
-        vec3<f32>(1,0,1),
-        vec3<f32>(1,1,0),
-    );
-
     var output : VertexOutput;
-    output.Position = vec4<f32>(pos[VertexIndex], 0.0, 1.0);
-    output.Color = col[VertexIndex];
+    output.Position = vec4<f32>(pos, 0.0, 1.0);
+    output.Color = col;
     return output;
 }
 
