@@ -10,12 +10,16 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
 
+    const zmath_dep = b.anonymousDependency("deps/zmath", @import("deps/zmath/build.zig"), .{});
+
     const app = try mach_core.App.init(b, mach_core_dep.builder, .{
         .name = "model-viewer",
         .src = "src/main.zig",
         .target = target,
         .optimize = optimize,
-        .deps = &[_]std.Build.Module.Import{},
+        .deps = &[_]std.Build.Module.Import{
+            .{ .name = "zmath", .module = zmath_dep.module("zmath") },
+        },
     });
     if (b.args) |args| app.run.addArgs(args);
 

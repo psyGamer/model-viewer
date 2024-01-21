@@ -1,26 +1,64 @@
 const std = @import("std");
 const core = @import("mach-core");
 const gpu = core.gpu;
+const zm = @import("zmath");
 
 pub const App = @This();
 
+timer: core.Timer,
 title_timer: core.Timer,
 pipeline: *gpu.RenderPipeline,
 
 vertex_buffer: *gpu.Buffer,
 index_buffer: *gpu.Buffer,
+uniform_buffer: *gpu.Buffer,
+bind_group: *gpu.BindGroup,
+
+depth_texture: *gpu.Texture,
+depth_texture_view: *gpu.TextureView,
 
 const Vertex = struct {
-    pos: @Vector(2, f32),
-    col: @Vector(3, f32),
+    pos: @Vector(3, f32),
+    col: @Vector(3, f32) = .{ 1, 1, 1 },
 };
+
+// zig fmt: off
+const cube_size = 0.25;
 const vertices = [_]Vertex{
-    .{ .pos = .{ 0.5, 0.5 }, .col = .{ 1.0, 0.0, 0.0 } },
-    .{ .pos = .{ -0.5, 0.5 }, .col = .{ 0.0, 1.0, 0.0 } },
-    .{ .pos = .{ 0.5, -0.5 }, .col = .{ 0.0, 0.0, 1.0 } },
-    .{ .pos = .{ -0.5, -0.5 }, .col = .{ 0.0, 0.0, 1.0 } },
+    .{ .pos = .{  cube_size,  cube_size, -cube_size }, .col = .{ 1.0, 0.0, 0.0 } }, // 0: Front Top Right
+    .{ .pos = .{ -cube_size,  cube_size, -cube_size }, .col = .{ 0.0, 1.0, 0.0 } }, // 1: Front Top Left
+    .{ .pos = .{  cube_size, -cube_size, -cube_size }, .col = .{ 0.0, 0.0, 1.0 } }, // 2: Front Bottom Right
+    .{ .pos = .{ -cube_size, -cube_size, -cube_size }, .col = .{ 0.0, 1.0, 1.0 } }, // 3: Front Bottom Left
+    .{ .pos = .{  cube_size,  cube_size,  cube_size }, .col = .{ 1.0, 0.0, 1.0 } }, // 4: Back Top Right
+    .{ .pos = .{ -cube_size,  cube_size,  cube_size }, .col = .{ 1.0, 1.0, 0.0 } }, // 5: Back Top Left
+    .{ .pos = .{  cube_size, -cube_size,  cube_size }, .col = .{ 0.0, 0.0, 0.0 } }, // 6: Back Bottom Right
+    .{ .pos = .{ -cube_size, -cube_size,  cube_size }, .col = .{ 1.0, 1.0, 1.0 } }, // 7: Back Bottom Left
 };
-const indices = [_]u32{ 0, 3, 2, 0, 1, 3 };
+// zig fmt: on
+const indices = [_]u32{
+    // Front
+    0, 3, 2,
+    0, 1, 3,
+    // Back
+    4, 7, 6,
+    4, 5, 7,
+    // Left
+    1, 7, 3,
+    1, 5, 7,
+    // Right
+    0, 6, 2,
+    0, 4, 6,
+    // Top
+    1, 0, 4,
+    1, 4, 5,
+    // Bottom
+    3, 2, 6,
+    3, 6, 7,
+};
+
+const UniformBufferObject = struct {
+    mat: zm.Mat,
+};
 
 pub fn init(app: *App) !void {
     try core.init(.{});
@@ -29,7 +67,7 @@ pub fn init(app: *App) !void {
     defer shader_module.release();
 
     const vertex_attributes = [_]gpu.VertexAttribute{
-        .{ .format = .float32x2, .offset = @offsetOf(Vertex, "pos"), .shader_location = 0 },
+        .{ .format = .float32x3, .offset = @offsetOf(Vertex, "pos"), .shader_location = 0 },
         .{ .format = .float32x3, .offset = @offsetOf(Vertex, "col"), .shader_location = 1 },
     };
     const vertex_buffer_layout = gpu.VertexBufferLayout.init(.{
@@ -49,14 +87,15 @@ pub fn init(app: *App) !void {
         .entry_point = "frag_main",
         .targets = &.{color_target},
     });
-    const pipeline_descriptor = gpu.RenderPipeline.Descriptor{
-        .fragment = &fragment,
-        .vertex = gpu.VertexState.init(.{
-            .module = shader_module,
-            .entry_point = "vertex_main",
-            .buffers = &.{vertex_buffer_layout},
-        }),
-    };
+    const pipeline_descriptor = gpu.RenderPipeline.Descriptor{ .fragment = &fragment, .vertex = gpu.VertexState.init(.{
+        .module = shader_module,
+        .entry_point = "vertex_main",
+        .buffers = &.{vertex_buffer_layout},
+    }), .depth_stencil = &.{
+        .format = .depth24_plus,
+        .depth_write_enabled = .true,
+        .depth_compare = .less,
+    } };
     const pipeline = core.device.createRenderPipeline(&pipeline_descriptor);
 
     const vertex_buffer = core.device.createBuffer(&.{
@@ -77,12 +116,51 @@ pub fn init(app: *App) !void {
     @memcpy(index_mapped.?, indices[0..]);
     index_buffer.unmap();
 
+    const uniform_buffer = core.device.createBuffer(&.{
+        .usage = .{ .uniform = true, .copy_dst = true },
+        .size = @sizeOf(UniformBufferObject),
+        .mapped_at_creation = .false,
+    });
+
+    const bind_group_layout = pipeline.getBindGroupLayout(0);
+    const bind_group = core.device.createBindGroup(&gpu.BindGroup.Descriptor.init(.{
+        .layout = bind_group_layout,
+        .entries = &.{
+            gpu.BindGroup.Entry.buffer(0, uniform_buffer, 0, @sizeOf(UniformBufferObject)),
+        },
+    }));
+    bind_group_layout.release();
+
+    const depth_texture = core.device.createTexture(&gpu.Texture.Descriptor.init(.{
+        .size = .{
+            .width = core.descriptor.width,
+            .height = core.descriptor.height,
+        },
+        .format = .depth24_plus,
+        .usage = .{
+            .render_attachment = true,
+            .texture_binding = true,
+        },
+    }));
+    const depth_texture_view = depth_texture.createView(&.{
+        .format = .depth24_plus,
+        .dimension = .dimension_2d,
+        .array_layer_count = 1,
+        .mip_level_count = 1,
+    });
+
     app.* = .{
+        .timer = try core.Timer.start(),
         .title_timer = try core.Timer.start(),
         .pipeline = pipeline,
 
         .vertex_buffer = vertex_buffer,
         .index_buffer = index_buffer,
+        .uniform_buffer = uniform_buffer,
+        .bind_group = bind_group,
+
+        .depth_texture = depth_texture,
+        .depth_texture_view = depth_texture_view,
     };
 }
 
@@ -95,6 +173,28 @@ pub fn update(app: *App) !bool {
     var iter = core.pollEvents();
     while (iter.next()) |event| {
         switch (event) {
+            .framebuffer_resize => |size| {
+                app.depth_texture.release();
+                app.depth_texture = core.device.createTexture(&gpu.Texture.Descriptor.init(.{
+                    .size = .{
+                        .width = size.width,
+                        .height = size.height,
+                    },
+                    .format = .depth24_plus,
+                    .usage = .{
+                        .render_attachment = true,
+                        .texture_binding = true,
+                    },
+                }));
+
+                app.depth_texture_view.release();
+                app.depth_texture_view = app.depth_texture.createView(&.{
+                    .format = .depth24_plus,
+                    .dimension = .dimension_2d,
+                    .array_layer_count = 1,
+                    .mip_level_count = 1,
+                });
+            },
             .close => return true,
             else => {},
         }
@@ -112,11 +212,40 @@ pub fn update(app: *App) !bool {
     const encoder = core.device.createCommandEncoder(null);
     const render_pass_info = gpu.RenderPassDescriptor.init(.{
         .color_attachments = &.{color_attachment},
+        .depth_stencil_attachment = &.{
+            .view = app.depth_texture_view,
+            .depth_clear_value = 1.0,
+            .depth_load_op = .clear,
+            .depth_store_op = .store,
+        },
     });
+
+    {
+        const time = app.timer.read();
+        const model = zm.mul(zm.rotationX(time * (std.math.pi / 2.0)), zm.rotationZ(time * (std.math.pi / 2.0)));
+        const view = zm.lookAtRh(
+            zm.Vec{ 0, 4, 2, 1 },
+            zm.Vec{ 0, 0, 0, 1 },
+            zm.Vec{ 0, 0, 1, 0 },
+        );
+        const proj = zm.perspectiveFovRh(
+            (std.math.pi / 4.0),
+            @as(f32, @floatFromInt(core.descriptor.width)) / @as(f32, @floatFromInt(core.descriptor.height)),
+            0.1,
+            100,
+        );
+        const mvp = zm.mul(zm.mul(model, view), proj);
+        const ubo = UniformBufferObject{
+            .mat = zm.transpose(mvp),
+        };
+        encoder.writeBuffer(app.uniform_buffer, 0, &[_]UniformBufferObject{ubo});
+    }
+
     const pass = encoder.beginRenderPass(&render_pass_info);
     pass.setPipeline(app.pipeline);
     pass.setVertexBuffer(0, app.vertex_buffer, 0, @sizeOf(Vertex) * vertices.len);
     pass.setIndexBuffer(app.index_buffer, .uint32, 0, @sizeOf(u32) * indices.len);
+    pass.setBindGroup(0, app.bind_group, &.{});
     pass.drawIndexed(indices.len, 1, 0, 0, 0);
     pass.end();
     pass.release();
