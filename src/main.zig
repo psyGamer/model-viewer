@@ -10,7 +10,7 @@ pipeline: *gpu.RenderPipeline,
 pub fn init(app: *App) !void {
     try core.init(.{});
 
-    const shader_module = core.device.createShaderModuleWGSL("shader.wgsl", @embedFile("shader.wgsl"));
+    const shader_module = core.device.createShaderModuleWGSL("shader.wgsl", @embedFile("shaders/shader.wgsl"));
     defer shader_module.release();
 
     // Fragment state
@@ -66,7 +66,7 @@ pub fn update(app: *App) !bool {
     });
     const pass = encoder.beginRenderPass(&render_pass_info);
     pass.setPipeline(app.pipeline);
-    pass.draw(3, 1, 0, 0);
+    pass.draw(6, 1, 0, 0);
     pass.end();
     pass.release();
 
