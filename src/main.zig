@@ -2,12 +2,20 @@ const std = @import("std");
 const core = @import("mach-core");
 const gpu = core.gpu;
 const zm = @import("zmath");
+const m3d = @import("model3d");
+
+const Model = @import("model.zig");
 
 pub const App = @This();
+
+gpa: std.heap.GeneralPurposeAllocator(.{}),
+allocator: std.mem.Allocator,
 
 timer: core.Timer,
 title_timer: core.Timer,
 pipeline: *gpu.RenderPipeline,
+
+model: Model,
 
 vertex_buffer: *gpu.Buffer,
 index_buffer: *gpu.Buffer,
@@ -17,45 +25,6 @@ bind_group: *gpu.BindGroup,
 depth_texture: *gpu.Texture,
 depth_texture_view: *gpu.TextureView,
 
-const Vertex = struct {
-    pos: @Vector(3, f32),
-    col: @Vector(3, f32) = .{ 1, 1, 1 },
-};
-
-// zig fmt: off
-const cube_size = 0.25;
-const vertices = [_]Vertex{
-    .{ .pos = .{  cube_size,  cube_size, -cube_size }, .col = .{ 1.0, 0.0, 0.0 } }, // 0: Front Top Right
-    .{ .pos = .{ -cube_size,  cube_size, -cube_size }, .col = .{ 0.0, 1.0, 0.0 } }, // 1: Front Top Left
-    .{ .pos = .{  cube_size, -cube_size, -cube_size }, .col = .{ 0.0, 0.0, 1.0 } }, // 2: Front Bottom Right
-    .{ .pos = .{ -cube_size, -cube_size, -cube_size }, .col = .{ 0.0, 1.0, 1.0 } }, // 3: Front Bottom Left
-    .{ .pos = .{  cube_size,  cube_size,  cube_size }, .col = .{ 1.0, 0.0, 1.0 } }, // 4: Back Top Right
-    .{ .pos = .{ -cube_size,  cube_size,  cube_size }, .col = .{ 1.0, 1.0, 0.0 } }, // 5: Back Top Left
-    .{ .pos = .{  cube_size, -cube_size,  cube_size }, .col = .{ 0.0, 0.0, 0.0 } }, // 6: Back Bottom Right
-    .{ .pos = .{ -cube_size, -cube_size,  cube_size }, .col = .{ 1.0, 1.0, 1.0 } }, // 7: Back Bottom Left
-};
-// zig fmt: on
-const indices = [_]u32{
-    // Front
-    0, 3, 2,
-    0, 1, 3,
-    // Back
-    4, 7, 6,
-    4, 5, 7,
-    // Left
-    1, 7, 3,
-    1, 5, 7,
-    // Right
-    0, 6, 2,
-    0, 4, 6,
-    // Top
-    1, 0, 4,
-    1, 4, 5,
-    // Bottom
-    3, 2, 6,
-    3, 6, 7,
-};
-
 const UniformBufferObject = struct {
     mat: zm.Mat,
 };
@@ -63,16 +32,17 @@ const UniformBufferObject = struct {
 pub fn init(app: *App) !void {
     try core.init(.{});
 
+    app.gpa = .{};
+    app.allocator = app.gpa.allocator();
+
+    const model = try Model.loadM3D(app.allocator, "assets/test.m3d");
+
     const shader_module = core.device.createShaderModuleWGSL("shader.wgsl", @embedFile("shaders/shader.wgsl"));
     defer shader_module.release();
 
-    const vertex_attributes = [_]gpu.VertexAttribute{
-        .{ .format = .float32x3, .offset = @offsetOf(Vertex, "pos"), .shader_location = 0 },
-        .{ .format = .float32x3, .offset = @offsetOf(Vertex, "col"), .shader_location = 1 },
-    };
     const vertex_buffer_layout = gpu.VertexBufferLayout.init(.{
-        .array_stride = @sizeOf(Vertex),
-        .attributes = &vertex_attributes,
+        .array_stride = @sizeOf(Model.Vertex),
+        .attributes = Model.Vertex.vertex_attributes,
     });
 
     // Fragment state
@@ -100,20 +70,20 @@ pub fn init(app: *App) !void {
 
     const vertex_buffer = core.device.createBuffer(&.{
         .usage = .{ .vertex = true },
-        .size = @sizeOf(Vertex) * vertices.len,
+        .size = @sizeOf(Model.Vertex) * model.vertices.len,
         .mapped_at_creation = .true,
     });
-    const vertex_mapped = vertex_buffer.getMappedRange(Vertex, 0, vertices.len);
-    @memcpy(vertex_mapped.?, vertices[0..]);
+    const vertex_mapped = vertex_buffer.getMappedRange(Model.Vertex, 0, model.vertices.len);
+    std.mem.copyForwards(Model.Vertex, vertex_mapped.?, model.vertices);
     vertex_buffer.unmap();
 
     const index_buffer = core.device.createBuffer(&.{
         .usage = .{ .index = true },
-        .size = @sizeOf(u32) * indices.len,
+        .size = @sizeOf(u32) * model.indices.len,
         .mapped_at_creation = .true,
     });
-    const index_mapped = index_buffer.getMappedRange(u32, 0, indices.len);
-    @memcpy(index_mapped.?, indices[0..]);
+    const index_mapped = index_buffer.getMappedRange(u32, 0, model.indices.len);
+    std.mem.copyForwards(u32, index_mapped.?, model.indices);
     index_buffer.unmap();
 
     const uniform_buffer = core.device.createBuffer(&.{
@@ -150,9 +120,14 @@ pub fn init(app: *App) !void {
     });
 
     app.* = .{
+        .gpa = app.gpa,
+        .allocator = app.allocator,
+
         .timer = try core.Timer.start(),
         .title_timer = try core.Timer.start(),
         .pipeline = pipeline,
+
+        .model = model,
 
         .vertex_buffer = vertex_buffer,
         .index_buffer = index_buffer,
@@ -166,13 +141,26 @@ pub fn init(app: *App) !void {
 
 pub fn deinit(app: *App) void {
     defer core.deinit();
+
     app.pipeline.release();
+    app.model.deinit(app.allocator);
+    std.debug.assert(app.gpa.detectLeaks() == false);
 }
 
 pub fn update(app: *App) !bool {
     var iter = core.pollEvents();
     while (iter.next()) |event| {
         switch (event) {
+            .key_press => |ev| {
+                switch (ev.key) {
+                    .space => return true,
+                    .one => core.setVSync(.none),
+                    .two => core.setVSync(.double),
+                    .three => core.setVSync(.triple),
+                    else => {},
+                }
+                std.debug.print("vsync mode changed to {s}\n", .{@tagName(core.vsync())});
+            },
             .framebuffer_resize => |size| {
                 app.depth_texture.release();
                 app.depth_texture = core.device.createTexture(&gpu.Texture.Descriptor.init(.{
@@ -221,8 +209,10 @@ pub fn update(app: *App) !bool {
     });
 
     {
+        const speed = 0.5;
+
         const time = app.timer.read();
-        const model = zm.mul(zm.rotationX(time * (std.math.pi / 2.0)), zm.rotationZ(time * (std.math.pi / 2.0)));
+        const model = zm.mul(zm.rotationX(time * (std.math.pi * speed)), zm.rotationZ(time * (std.math.pi * speed)));
         const view = zm.lookAtRh(
             zm.Vec{ 0, 4, 2, 1 },
             zm.Vec{ 0, 0, 0, 1 },
@@ -243,10 +233,10 @@ pub fn update(app: *App) !bool {
 
     const pass = encoder.beginRenderPass(&render_pass_info);
     pass.setPipeline(app.pipeline);
-    pass.setVertexBuffer(0, app.vertex_buffer, 0, @sizeOf(Vertex) * vertices.len);
-    pass.setIndexBuffer(app.index_buffer, .uint32, 0, @sizeOf(u32) * indices.len);
+    pass.setVertexBuffer(0, app.vertex_buffer, 0, @sizeOf(Model.Vertex) * app.model.vertices.len);
+    pass.setIndexBuffer(app.index_buffer, .uint32, 0, @sizeOf(u32) * app.model.indices.len);
     pass.setBindGroup(0, app.bind_group, &.{});
-    pass.drawIndexed(indices.len, 1, 0, 0, 0);
+    pass.drawIndexed(@intCast(app.model.indices.len), 1, 0, 0, 0);
     pass.end();
     pass.release();
 
