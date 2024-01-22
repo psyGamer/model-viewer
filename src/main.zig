@@ -13,7 +13,9 @@ allocator: std.mem.Allocator,
 
 timer: core.Timer,
 title_timer: core.Timer,
+
 pipeline: *gpu.RenderPipeline,
+pipieline_wireframe: *gpu.RenderPipeline,
 
 model: Model,
 
@@ -24,6 +26,8 @@ bind_group: *gpu.BindGroup,
 
 depth_texture: *gpu.Texture,
 depth_texture_view: *gpu.TextureView,
+
+wireframe_visible: bool = false,
 
 const UniformBufferObject = struct {
     mat: zm.Mat,
@@ -37,39 +41,77 @@ pub fn init(app: *App) !void {
 
     const model = try Model.loadM3D(app.allocator, "assets/test.m3d");
 
-    const shader_module = core.device.createShaderModuleWGSL("shader.wgsl", @embedFile("shaders/shader.wgsl"));
-    defer shader_module.release();
+    const bind_group_layout = core.device.createBindGroupLayout(&gpu.BindGroupLayout.Descriptor.init(.{
+        .entries = &.{
+            gpu.BindGroupLayout.Entry.buffer(0, .{ .vertex = true }, .uniform, false, @sizeOf(UniformBufferObject)),
+            gpu.BindGroupLayout.Entry.buffer(1, .{ .vertex = true }, .read_only_storage, false, model.vertices.len * @sizeOf(Model.Vertex)),
+            gpu.BindGroupLayout.Entry.buffer(2, .{ .vertex = true }, .read_only_storage, false, model.indices.len * @sizeOf(u32)),
+        },
+    }));
+    defer bind_group_layout.release();
+    const pipeline_layout = core.device.createPipelineLayout(&gpu.PipelineLayout.Descriptor.init(.{
+        .bind_group_layouts = &.{bind_group_layout},
+    }));
+    defer pipeline_layout.release();
 
-    const vertex_buffer_layout = gpu.VertexBufferLayout.init(.{
-        .array_stride = @sizeOf(Model.Vertex),
-        .attributes = Model.Vertex.vertex_attributes,
-    });
-
-    // Fragment state
-    const blend = gpu.BlendState{};
-    const color_target = gpu.ColorTargetState{
+    const color_target_state: gpu.ColorTargetState = .{
         .format = core.descriptor.format,
-        .blend = &blend,
+        .blend = &.{},
         .write_mask = gpu.ColorWriteMaskFlags.all,
     };
-    const fragment = gpu.FragmentState.init(.{
-        .module = shader_module,
-        .entry_point = "frag_main",
-        .targets = &.{color_target},
-    });
-    const pipeline_descriptor = gpu.RenderPipeline.Descriptor{ .fragment = &fragment, .vertex = gpu.VertexState.init(.{
-        .module = shader_module,
-        .entry_point = "vertex_main",
-        .buffers = &.{vertex_buffer_layout},
-    }), .depth_stencil = &.{
+    const depth_stencil_state: gpu.DepthStencilState = .{
         .format = .depth24_plus,
         .depth_write_enabled = .true,
         .depth_compare = .less,
-    } };
-    const pipeline = core.device.createRenderPipeline(&pipeline_descriptor);
+    };
+
+    const pipeline = b: {
+        const shader_module = core.device.createShaderModuleWGSL("shader.wgsl", @embedFile("shaders/shader.wgsl"));
+        defer shader_module.release();
+
+        break :b core.device.createRenderPipeline(&.{
+            .label = "Solid Model Pipeline",
+            .layout = pipeline_layout,
+            .fragment = &gpu.FragmentState.init(.{
+                .module = shader_module,
+                .entry_point = "frag_main",
+                .targets = &.{color_target_state},
+            }),
+            .vertex = gpu.VertexState.init(.{
+                .module = shader_module,
+                .entry_point = "vertex_main",
+                .buffers = &.{},
+            }),
+            .depth_stencil = &depth_stencil_state,
+        });
+    };
+
+    const pipeline_wireframe = b: {
+        const shader_module = core.device.createShaderModuleWGSL("wireframe.wgsl", @embedFile("shaders/wireframe.wgsl"));
+        defer shader_module.release();
+
+        break :b core.device.createRenderPipeline(&.{
+            .label = "Wireframe Model Pipeline",
+            .layout = pipeline_layout,
+            .primitive = .{
+                .topology = .line_list,
+            },
+            .fragment = &gpu.FragmentState.init(.{
+                .module = shader_module,
+                .entry_point = "frag_main",
+                .targets = &.{color_target_state},
+            }),
+            .vertex = gpu.VertexState.init(.{
+                .module = shader_module,
+                .entry_point = "vertex_main",
+                .buffers = &.{},
+            }),
+            .depth_stencil = &depth_stencil_state,
+        });
+    };
 
     const vertex_buffer = core.device.createBuffer(&.{
-        .usage = .{ .vertex = true },
+        .usage = .{ .vertex = true, .storage = true },
         .size = @sizeOf(Model.Vertex) * model.vertices.len,
         .mapped_at_creation = .true,
     });
@@ -78,7 +120,7 @@ pub fn init(app: *App) !void {
     vertex_buffer.unmap();
 
     const index_buffer = core.device.createBuffer(&.{
-        .usage = .{ .index = true },
+        .usage = .{ .index = true, .storage = true },
         .size = @sizeOf(u32) * model.indices.len,
         .mapped_at_creation = .true,
     });
@@ -92,14 +134,14 @@ pub fn init(app: *App) !void {
         .mapped_at_creation = .false,
     });
 
-    const bind_group_layout = pipeline.getBindGroupLayout(0);
     const bind_group = core.device.createBindGroup(&gpu.BindGroup.Descriptor.init(.{
         .layout = bind_group_layout,
         .entries = &.{
             gpu.BindGroup.Entry.buffer(0, uniform_buffer, 0, @sizeOf(UniformBufferObject)),
+            gpu.BindGroup.Entry.buffer(1, vertex_buffer, 0, model.vertices.len * @sizeOf(Model.Vertex)),
+            gpu.BindGroup.Entry.buffer(2, index_buffer, 0, model.indices.len * @sizeOf(u32)),
         },
     }));
-    bind_group_layout.release();
 
     const depth_texture = core.device.createTexture(&gpu.Texture.Descriptor.init(.{
         .size = .{
@@ -125,7 +167,9 @@ pub fn init(app: *App) !void {
 
         .timer = try core.Timer.start(),
         .title_timer = try core.Timer.start(),
+
         .pipeline = pipeline,
+        .pipieline_wireframe = pipeline_wireframe,
 
         .model = model,
 
@@ -157,6 +201,7 @@ pub fn update(app: *App) !bool {
                     .one => core.setVSync(.none),
                     .two => core.setVSync(.double),
                     .three => core.setVSync(.triple),
+                    .f3 => app.wireframe_visible = !app.wireframe_visible,
                     else => {},
                 }
                 std.debug.print("vsync mode changed to {s}\n", .{@tagName(core.vsync())});
@@ -209,7 +254,7 @@ pub fn update(app: *App) !bool {
     });
 
     {
-        const speed = 0.5;
+        const speed = 0.1;
 
         const time = app.timer.read();
         const model = zm.mul(zm.rotationX(time * (std.math.pi * speed)), zm.rotationZ(time * (std.math.pi * speed)));
@@ -232,11 +277,20 @@ pub fn update(app: *App) !bool {
     }
 
     const pass = encoder.beginRenderPass(&render_pass_info);
+
     pass.setPipeline(app.pipeline);
     pass.setVertexBuffer(0, app.vertex_buffer, 0, @sizeOf(Model.Vertex) * app.model.vertices.len);
     pass.setIndexBuffer(app.index_buffer, .uint32, 0, @sizeOf(u32) * app.model.indices.len);
     pass.setBindGroup(0, app.bind_group, &.{});
     pass.drawIndexed(@intCast(app.model.indices.len), 1, 0, 0, 0);
+
+    if (app.wireframe_visible) {
+        pass.setPipeline(app.pipieline_wireframe);
+        pass.setVertexBuffer(0, app.vertex_buffer, 0, @sizeOf(Model.Vertex) * app.model.vertices.len);
+        pass.setBindGroup(0, app.bind_group, &.{});
+        pass.draw(@intCast(6 * app.model.indices.len), 1, 0, 0);
+    }
+
     pass.end();
     pass.release();
 
