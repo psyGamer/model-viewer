@@ -4,7 +4,9 @@ const gpu = core.gpu;
 const zm = @import("zmath");
 const m3d = @import("model3d");
 
+const m = @import("math.zig");
 const Model = @import("model.zig");
+const Camera = @import("camera.zig");
 
 pub const App = @This();
 
@@ -17,8 +19,6 @@ title_timer: core.Timer,
 pipeline: *gpu.RenderPipeline,
 pipieline_wireframe: *gpu.RenderPipeline,
 
-model: Model,
-
 vertex_buffer: *gpu.Buffer,
 index_buffer: *gpu.Buffer,
 uniform_buffer: *gpu.Buffer,
@@ -27,9 +27,13 @@ bind_group: *gpu.BindGroup,
 depth_texture: *gpu.Texture,
 depth_texture_view: *gpu.TextureView,
 
+model: Model,
+camera: Camera,
+
 wireframe_visible: bool = false,
 
 const UniformBufferObject = struct {
+    // mat: m.Mat4,
     mat: zm.Mat,
 };
 
@@ -171,8 +175,6 @@ pub fn init(app: *App) !void {
         .pipeline = pipeline,
         .pipieline_wireframe = pipeline_wireframe,
 
-        .model = model,
-
         .vertex_buffer = vertex_buffer,
         .index_buffer = index_buffer,
         .uniform_buffer = uniform_buffer,
@@ -180,6 +182,9 @@ pub fn init(app: *App) !void {
 
         .depth_texture = depth_texture,
         .depth_texture_view = depth_texture_view,
+
+        .model = model,
+        .camera = Camera.init(90, 0, 0, m.vec3_zero - m.scale(m.vec3_pos_x, 10)),
     };
 }
 
@@ -204,7 +209,18 @@ pub fn update(app: *App) !bool {
                     .f3 => app.wireframe_visible = !app.wireframe_visible,
                     else => {},
                 }
-                std.debug.print("vsync mode changed to {s}\n", .{@tagName(core.vsync())});
+
+                // Camera movement
+                const move_speed: m.Vec3 = @splat(1);
+                switch (ev.key) {
+                    .w => app.camera.position += app.camera.front * move_speed,
+                    .s => app.camera.position -= app.camera.front * move_speed,
+                    .a => app.camera.position -= app.camera.right * move_speed,
+                    .d => app.camera.position += app.camera.right * move_speed,
+                    else => {},
+                }
+
+                app.camera.updateVectors();
             },
             .framebuffer_resize => |size| {
                 app.depth_texture.release();
@@ -257,21 +273,25 @@ pub fn update(app: *App) !bool {
         const speed = 0.1;
 
         const time = app.timer.read();
-        const model = zm.mul(zm.rotationX(time * (std.math.pi * speed)), zm.rotationZ(time * (std.math.pi * speed)));
-        const view = zm.lookAtRh(
-            zm.Vec{ 0, 4, 2, 1 },
-            zm.Vec{ 0, 0, 0, 1 },
-            zm.Vec{ 0, 0, 1, 0 },
+
+        const model = m.mul(
+            m.createRotateZMatrix(time * (std.math.pi * speed)),
+            m.createRotateXMatrix(time * (std.math.pi * speed)),
         );
-        const proj = zm.perspectiveFovRh(
+        const view = m.createLookAtMatrix(
+            .{ 0, 4, 2 },
+            .{ 0, 0, 0 },
+            .{ 0, 0, 1 },
+        );
+        const proj = m.createPerspectiveMatrix(
             (std.math.pi / 4.0),
             @as(f32, @floatFromInt(core.descriptor.width)) / @as(f32, @floatFromInt(core.descriptor.height)),
             0.1,
             100,
         );
-        const mvp = zm.mul(zm.mul(model, view), proj);
+
         const ubo = UniformBufferObject{
-            .mat = zm.transpose(mvp),
+            .mat = m.transpose(m.batchMul(.{ model, view, proj })),
         };
         encoder.writeBuffer(app.uniform_buffer, 0, &[_]UniformBufferObject{ubo});
     }

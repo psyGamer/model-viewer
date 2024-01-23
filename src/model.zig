@@ -83,8 +83,6 @@ pub fn loadM3D(allocator: std.mem.Allocator, path: [:0]const u8) !Model {
 }
 
 pub fn deinit(model: Model, allocator: std.mem.Allocator) void {
-    std.log.info("{s}: {}", .{ std.fmt.fmtSliceHexLower(std.mem.asBytes(&model.vertices.ptr)), model.vertices.len });
     allocator.free(model.vertices);
-    std.log.info("{s}: {}", .{ std.fmt.fmtSliceHexLower(std.mem.asBytes(&model.indices.ptr)), model.indices.len });
     allocator.free(model.indices);
 }
