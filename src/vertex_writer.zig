@@ -61,7 +61,9 @@ pub fn VertexWriter(comptime VertexType: type, comptime IndexType: type) type {
             var current_sparse_index = sparse_index;
             while (current_sparse_index != null_index) {
                 const packed_index = self.sparse_to_packed_map[current_sparse_index].packed_index;
-                if (std.mem.eql(u8, &std.mem.toBytes(self.vertices[packed_index]), &std.mem.toBytes(vertex))) {
+                // NOTE: The official version uses the commented-out comparison. However this might not return true for equal vertices, due to undefined struct padding..
+                // if (std.mem.eql(u8, &std.mem.toBytes(self.vertices[packed_index]), &std.mem.toBytes(vertex))) {
+                if (std.meta.eql(self.vertices[packed_index], vertex)) {
                     // We already have a record for this vertex in our chain
                     self.indices[self.written_indices_count] = packed_index;
                     self.written_indices_count += 1;

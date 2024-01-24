@@ -25,6 +25,7 @@ pub fn build(b: *std.Build) !void {
             .{ .name = "model3d", .module = model3d_dep.module("mach-model3d") },
         },
     });
+    app.compile.linkLibC();
     if (b.args) |args| app.run.addArgs(args);
 
     const install_content = b.addInstallDirectory(.{

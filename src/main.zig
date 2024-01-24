@@ -1,7 +1,7 @@
+const builtin = @import("builtin");
 const std = @import("std");
 const core = @import("mach-core");
 const gpu = core.gpu;
-const zm = @import("zmath");
 const m3d = @import("model3d");
 
 const m = @import("math.zig");
@@ -29,12 +29,16 @@ depth_texture_view: *gpu.TextureView,
 
 model: Model,
 camera: Camera,
+prev_mouse_pos: core.Position,
 
 wireframe_visible: bool = false,
 
 const UniformBufferObject = struct {
-    // mat: m.Mat4,
-    mat: zm.Mat,
+    mat: m.Mat4,
+};
+
+pub const std_options = struct {
+    pub const log_level = .debug;
 };
 
 pub fn init(app: *App) !void {
@@ -76,6 +80,9 @@ pub fn init(app: *App) !void {
         break :b core.device.createRenderPipeline(&.{
             .label = "Solid Model Pipeline",
             .layout = pipeline_layout,
+            .primitive = .{
+                .cull_mode = if (builtin.mode == .Debug) .none else .back,
+            },
             .fragment = &gpu.FragmentState.init(.{
                 .module = shader_module,
                 .entry_point = "frag_main",
@@ -184,8 +191,12 @@ pub fn init(app: *App) !void {
         .depth_texture_view = depth_texture_view,
 
         .model = model,
-        .camera = Camera.init(90, 0, 0, m.vec3_zero - m.scale(m.vec3_pos_x, 10)),
+        .camera = Camera.init(90, 0, 0, m.vec3(0, 0, -5)),
+        .prev_mouse_pos = .{ .x = 0, .y = 0 },
     };
+    app.camera.pitch = 0;
+    app.camera.yaw = -90;
+    app.camera.updateVectors();
 }
 
 pub fn deinit(app: *App) void {
@@ -202,25 +213,35 @@ pub fn update(app: *App) !bool {
         switch (event) {
             .key_press => |ev| {
                 switch (ev.key) {
-                    .space => return true,
                     .one => core.setVSync(.none),
                     .two => core.setVSync(.double),
                     .three => core.setVSync(.triple),
                     .f3 => app.wireframe_visible = !app.wireframe_visible,
+
                     else => {},
                 }
-
-                // Camera movement
-                const move_speed: m.Vec3 = @splat(1);
-                switch (ev.key) {
-                    .w => app.camera.position += app.camera.front * move_speed,
-                    .s => app.camera.position -= app.camera.front * move_speed,
-                    .a => app.camera.position -= app.camera.right * move_speed,
-                    .d => app.camera.position += app.camera.right * move_speed,
-                    else => {},
+            },
+            .mouse_press => |ev| {
+                if (ev.button == .left) {
+                    core.setCursorMode(.disabled);
                 }
-
-                app.camera.updateVectors();
+            },
+            .mouse_release => |ev| {
+                if (ev.button == .left) {
+                    core.setCursorMode(.normal);
+                }
+            },
+            .mouse_motion => |ev| {
+                if (core.mousePressed(.left)) {
+                    const delta: core.Position = .{
+                        .x = ev.pos.x - app.prev_mouse_pos.x,
+                        .y = ev.pos.y - app.prev_mouse_pos.y,
+                    };
+                    const camera_rotate_speed: f32 = 0.25;
+                    app.camera.yaw -= @as(f32, @floatCast(delta.x)) * camera_rotate_speed;
+                    app.camera.pitch -= @as(f32, @floatCast(delta.y)) * camera_rotate_speed;
+                }
+                app.prev_mouse_pos = ev.pos;
             },
             .framebuffer_resize => |size| {
                 app.depth_texture.release();
@@ -249,6 +270,24 @@ pub fn update(app: *App) !bool {
         }
     }
 
+    // Camera movement
+    const camera_move_speed: m.Vec3 = @splat(3 * core.delta_time);
+    if (core.keyPressed(.w)) app.camera.position += app.camera.front * camera_move_speed;
+    if (core.keyPressed(.s)) app.camera.position -= app.camera.front * camera_move_speed;
+    if (core.keyPressed(.d)) app.camera.position += app.camera.right * camera_move_speed;
+    if (core.keyPressed(.a)) app.camera.position -= app.camera.right * camera_move_speed;
+    if (core.keyPressed(.space)) app.camera.position += Camera.world_up * camera_move_speed;
+    if (core.keyPressed(.left_control)) app.camera.position -= Camera.world_up * camera_move_speed;
+    if (core.keyPressed(.left)) app.camera.pitch -= 5;
+    if (core.keyPressed(.right)) app.camera.pitch += 5;
+
+    if (core.mousePressed(.left)) {}
+
+    app.camera.pitch = @mod(app.camera.pitch, 360);
+    app.camera.yaw = @mod(app.camera.yaw, 360);
+
+    app.camera.updateVectors();
+
     const queue = core.queue;
     const back_buffer_view = core.swap_chain.getCurrentTextureView().?;
     const color_attachment = gpu.RenderPassColorAttachment{
@@ -275,14 +314,11 @@ pub fn update(app: *App) !bool {
         const time = app.timer.read();
 
         const model = m.mul(
-            m.createRotateZMatrix(time * (std.math.pi * speed)),
-            m.createRotateXMatrix(time * (std.math.pi * speed)),
+            m.createRotateYMatrix(time * (std.math.pi * speed)),
+            m.mat4_ident,
         );
-        const view = m.createLookAtMatrix(
-            .{ 0, 4, 2 },
-            .{ 0, 0, 0 },
-            .{ 0, 0, 1 },
-        );
+        const view = app.camera.getViewMatrix();
+
         const proj = m.createPerspectiveMatrix(
             (std.math.pi / 4.0),
             @as(f32, @floatFromInt(core.descriptor.width)) / @as(f32, @floatFromInt(core.descriptor.height)),
