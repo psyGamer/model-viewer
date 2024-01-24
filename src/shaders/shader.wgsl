@@ -1,10 +1,12 @@
 struct Uniforms {
-    modelViewProjectionMatrix : mat4x4<f32>,
+    model : mat4x4<f32>,
+    view : mat4x4<f32>,
+    proj : mat4x4<f32>,
 };
 
 struct Vertex {
-    position: vec4<f32>, // Actually a vec3, but alignment
-    normal: vec4<f32>,   // -||-
+    Position: vec3<f32>,
+    Normal: vec3<f32>,
 };
 
 @binding(0) @group(0) var<uniform> uniforms : Uniforms;
@@ -15,16 +17,27 @@ struct VertexInput {
 };
 struct VertexOutput {
     @builtin(position) Position : vec4<f32>,
-    @location(0) Color : vec3<f32>,
+    @location(0) Normal : vec3<f32>,
 };
 
 @vertex fn vertex_main(vertex: VertexInput) -> VertexOutput {
     var output : VertexOutput;
-    output.Position = vec4<f32>(vertices[vertex.vertexID].position.xyz, 1.0) * uniforms.modelViewProjectionMatrix;
-    output.Color = vertices[vertex.vertexID].position.xyz;
+    output.Position = uniforms.proj * uniforms.view * uniforms.model * vec4<f32>(vertices[vertex.vertexID].Position, 1.0);
+    let normal = uniforms.model * vec4<f32>(vertices[vertex.vertexID].Normal, 1.0);
+    output.Normal = normal.xyz / normal.w;
     return output;
 }
 
-@fragment fn frag_main(@location(0) Color: vec3<f32>) -> @location(0) vec4<f32> {
-    return vec4<f32>(Color, 1.0);
+struct FragmentInput {
+    @location(0) Normal : vec3<f32>,
+}
+
+@fragment fn frag_main(frag: FragmentInput) -> @location(0) vec4<f32> {
+    const sunDir = normalize(vec3<f32>(10, 10, 10));
+
+    let nDotL = max(0, dot(frag.Normal, sunDir));
+    let ambiance = 0.1;
+    
+    return vec4<f32>(vec3<f32>(nDotL + ambiance), 1.0);
+    // return vec4<f32>(frag.Normal, 1.0);
 }

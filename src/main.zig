@@ -34,7 +34,9 @@ prev_mouse_pos: core.Position,
 wireframe_visible: bool = false,
 
 const UniformBufferObject = struct {
-    mat: m.Mat4,
+    model: m.Mat4,
+    view: m.Mat4,
+    proj: m.Mat4,
 };
 
 pub const std_options = struct {
@@ -310,24 +312,20 @@ pub fn update(app: *App) !bool {
 
     {
         const speed = 0.1;
-
         const time = app.timer.read();
 
-        const model = m.mul(
-            m.createRotateYMatrix(time * (std.math.pi * speed)),
-            m.mat4_ident,
-        );
-        const view = app.camera.getViewMatrix();
-
-        const proj = m.createPerspectiveMatrix(
-            (std.math.pi / 4.0),
-            @as(f32, @floatFromInt(core.descriptor.width)) / @as(f32, @floatFromInt(core.descriptor.height)),
-            0.1,
-            100,
-        );
-
-        const ubo = UniformBufferObject{
-            .mat = m.transpose(m.batchMul(.{ model, view, proj })),
+        const ubo: UniformBufferObject = .{
+            .model = m.mul(
+                m.createRotateYMatrix(time * (std.math.pi * speed)),
+                m.mat4_ident,
+            ),
+            .view = app.camera.getViewMatrix(),
+            .proj = m.createPerspectiveMatrix(
+                (std.math.pi / 4.0),
+                @as(f32, @floatFromInt(core.descriptor.width)) / @as(f32, @floatFromInt(core.descriptor.height)),
+                0.1,
+                100,
+            ),
         };
         encoder.writeBuffer(app.uniform_buffer, 0, &[_]UniformBufferObject{ubo});
     }
