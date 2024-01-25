@@ -43,9 +43,9 @@ struct FragmentInput {
     let ambiance = 0.1;
     let diffuse = max(0, dot(frag.Normal, lightDir));
     
-    let viewDir = normalize(uniforms.camPos - frag.Position.xyz);
-    let reflectedLight = reflect(-lightDir, frag.Normal);
-    let specular = pow(max(0, dot(viewDir, reflectedLight)), 32);
+    let viewDir = normalize(uniforms.camPos - frag.Position);
+    let halfwayDir = normalize(viewDir + lightDir);
+    let specular = pow(max(0, dot(viewDir, halfwayDir)), 64);
     
-    return vec4<f32>(vec3<f32>(ambiance + diffuse + specular * 0.5), 1.0);
+    return vec4<f32>(vec3<f32>(ambiance + diffuse + specular * 0.25), 1.0);
 }
