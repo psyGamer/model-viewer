@@ -19,8 +19,6 @@ title_timer: core.Timer,
 pipeline: *gpu.RenderPipeline,
 pipieline_wireframe: *gpu.RenderPipeline,
 
-vertex_buffer: *gpu.Buffer,
-index_buffer: *gpu.Buffer,
 uniform_buffer: *gpu.Buffer,
 bind_group: *gpu.BindGroup,
 
@@ -56,8 +54,8 @@ pub fn init(app: *App) !void {
     const bind_group_layout = core.device.createBindGroupLayout(&gpu.BindGroupLayout.Descriptor.init(.{
         .entries = &.{
             gpu.BindGroupLayout.Entry.buffer(0, .{ .vertex = true, .fragment = true }, .uniform, false, @sizeOf(UniformBufferObject)),
-            gpu.BindGroupLayout.Entry.buffer(1, .{ .vertex = true }, .read_only_storage, false, model.vertices.len * @sizeOf(Model.Vertex)),
-            gpu.BindGroupLayout.Entry.buffer(2, .{ .vertex = true }, .read_only_storage, false, model.indices.len * @sizeOf(u32)),
+            gpu.BindGroupLayout.Entry.buffer(1, .{ .vertex = true }, .read_only_storage, false, model.vertex_count * @sizeOf(Model.Vertex)),
+            gpu.BindGroupLayout.Entry.buffer(2, .{ .vertex = true }, .read_only_storage, false, model.index_count * @sizeOf(u32)),
         },
     }));
     defer bind_group_layout.release();
@@ -125,24 +123,6 @@ pub fn init(app: *App) !void {
         });
     };
 
-    const vertex_buffer = core.device.createBuffer(&.{
-        .usage = .{ .vertex = true, .storage = true },
-        .size = @sizeOf(Model.Vertex) * model.vertices.len,
-        .mapped_at_creation = .true,
-    });
-    const vertex_mapped = vertex_buffer.getMappedRange(Model.Vertex, 0, model.vertices.len);
-    std.mem.copyForwards(Model.Vertex, vertex_mapped.?, model.vertices);
-    vertex_buffer.unmap();
-
-    const index_buffer = core.device.createBuffer(&.{
-        .usage = .{ .index = true, .storage = true },
-        .size = @sizeOf(u32) * model.indices.len,
-        .mapped_at_creation = .true,
-    });
-    const index_mapped = index_buffer.getMappedRange(u32, 0, model.indices.len);
-    std.mem.copyForwards(u32, index_mapped.?, model.indices);
-    index_buffer.unmap();
-
     const uniform_buffer = core.device.createBuffer(&.{
         .usage = .{ .uniform = true, .copy_dst = true },
         .size = @sizeOf(UniformBufferObject),
@@ -153,8 +133,8 @@ pub fn init(app: *App) !void {
         .layout = bind_group_layout,
         .entries = &.{
             gpu.BindGroup.Entry.buffer(0, uniform_buffer, 0, @sizeOf(UniformBufferObject)),
-            gpu.BindGroup.Entry.buffer(1, vertex_buffer, 0, model.vertices.len * @sizeOf(Model.Vertex)),
-            gpu.BindGroup.Entry.buffer(2, index_buffer, 0, model.indices.len * @sizeOf(u32)),
+            gpu.BindGroup.Entry.buffer(1, model.vertex_buffer, 0, model.vertex_count * @sizeOf(Model.Vertex)),
+            gpu.BindGroup.Entry.buffer(2, model.index_buffer, 0, model.index_count * @sizeOf(u32)),
         },
     }));
 
@@ -186,8 +166,6 @@ pub fn init(app: *App) !void {
         .pipeline = pipeline,
         .pipieline_wireframe = pipeline_wireframe,
 
-        .vertex_buffer = vertex_buffer,
-        .index_buffer = index_buffer,
         .uniform_buffer = uniform_buffer,
         .bind_group = bind_group,
 
@@ -275,7 +253,7 @@ pub fn update(app: *App) !bool {
     }
 
     // Camera movement
-    const camera_move_speed: m.Vec3 = @splat(3 * core.delta_time);
+    const camera_move_speed: m.Vec3 = @splat((@as(f32, if (core.keyPressed(.left_shift)) 10 else 3)) * core.delta_time);
     if (core.keyPressed(.w)) app.camera.position += app.camera.front * camera_move_speed;
     if (core.keyPressed(.s)) app.camera.position -= app.camera.front * camera_move_speed;
     if (core.keyPressed(.d)) app.camera.position += app.camera.right * camera_move_speed;
@@ -339,16 +317,16 @@ pub fn update(app: *App) !bool {
     const pass = encoder.beginRenderPass(&render_pass_info);
 
     pass.setPipeline(app.pipeline);
-    pass.setVertexBuffer(0, app.vertex_buffer, 0, @sizeOf(Model.Vertex) * app.model.vertices.len);
-    pass.setIndexBuffer(app.index_buffer, .uint32, 0, @sizeOf(u32) * app.model.indices.len);
+    pass.setVertexBuffer(0, app.model.vertex_buffer, 0, @sizeOf(Model.Vertex) * app.model.vertex_count);
+    pass.setIndexBuffer(app.model.index_buffer, .uint32, 0, @sizeOf(u32) * app.model.index_count);
     pass.setBindGroup(0, app.bind_group, &.{});
-    pass.drawIndexed(@intCast(app.model.indices.len), 1, 0, 0, 0);
+    pass.drawIndexed(@intCast(app.model.index_count), 1, 0, 0, 0);
 
     if (app.wireframe_visible) {
         pass.setPipeline(app.pipieline_wireframe);
-        pass.setVertexBuffer(0, app.vertex_buffer, 0, @sizeOf(Model.Vertex) * app.model.vertices.len);
+        pass.setVertexBuffer(0, app.model.vertex_buffer, 0, @sizeOf(Model.Vertex) * app.model.vertex_count);
         pass.setBindGroup(0, app.bind_group, &.{});
-        pass.draw(@intCast(6 * app.model.indices.len), 1, 0, 0);
+        pass.draw(@intCast(6 * app.model.index_count), 1, 0, 0);
     }
 
     pass.end();
