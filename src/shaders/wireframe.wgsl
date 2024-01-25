@@ -1,11 +1,12 @@
 struct Uniforms {
-    modelViewProjectionMatrix : mat4x4<f32>,
+    model : mat4x4<f32>,
+    view : mat4x4<f32>,
+    proj : mat4x4<f32>,
 };
 
-
 struct Vertex {
-    position: vec4<f32>, // Actually a vec3, but alignment
-    normal: vec4<f32>,   // -||-
+    position: vec3<f32>,
+    normal: vec3<f32>,
 };
 
 @binding(0) @group(0) var<uniform> uniforms : Uniforms;
@@ -30,7 +31,7 @@ struct VertexOutput {
     var elementIndex = indices[elementIndexIndex];
     
     var output : VertexOutput;
-    output.position = vec4<f32>(vertices[elementIndex].position.xyz, 1.0) * uniforms.modelViewProjectionMatrix;
+    output.position = uniforms.proj * uniforms.view * uniforms.model * vec4<f32>(vertices[elementIndex].position.xyz, 1.0);
     output.color = vertices[elementIndex].position.xyz;
     output.color = vec3<f32>(1.0);
     return output;

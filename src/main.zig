@@ -37,6 +37,8 @@ const UniformBufferObject = struct {
     model: m.Mat4,
     view: m.Mat4,
     proj: m.Mat4,
+    normal: m.Mat3,
+    cam: m.Vec3,
 };
 
 pub const std_options = struct {
@@ -49,11 +51,11 @@ pub fn init(app: *App) !void {
     app.gpa = .{};
     app.allocator = app.gpa.allocator();
 
-    const model = try Model.loadM3D(app.allocator, "assets/test.m3d");
+    const model = try Model.load(app.allocator, "assets/test.obj");
 
     const bind_group_layout = core.device.createBindGroupLayout(&gpu.BindGroupLayout.Descriptor.init(.{
         .entries = &.{
-            gpu.BindGroupLayout.Entry.buffer(0, .{ .vertex = true }, .uniform, false, @sizeOf(UniformBufferObject)),
+            gpu.BindGroupLayout.Entry.buffer(0, .{ .vertex = true, .fragment = true }, .uniform, false, @sizeOf(UniformBufferObject)),
             gpu.BindGroupLayout.Entry.buffer(1, .{ .vertex = true }, .read_only_storage, false, model.vertices.len * @sizeOf(Model.Vertex)),
             gpu.BindGroupLayout.Entry.buffer(2, .{ .vertex = true }, .read_only_storage, false, model.indices.len * @sizeOf(u32)),
         },
@@ -314,9 +316,10 @@ pub fn update(app: *App) !bool {
         const speed = 0.1;
         const time = app.timer.read();
 
-        const ubo: UniformBufferObject = .{
+        var ubo: UniformBufferObject = .{
             .model = m.mul(
                 m.createRotateYMatrix(time * (std.math.pi * speed)),
+                // m.mat4_ident,
                 m.mat4_ident,
             ),
             .view = app.camera.getViewMatrix(),
@@ -326,7 +329,10 @@ pub fn update(app: *App) !bool {
                 0.1,
                 100,
             ),
+            .normal = undefined,
+            .cam = app.camera.position,
         };
+        ubo.normal = m.mat3_from_mat4(m.transpose(m.inverse(ubo.model)));
         encoder.writeBuffer(app.uniform_buffer, 0, &[_]UniformBufferObject{ubo});
     }
 

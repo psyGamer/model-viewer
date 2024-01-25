@@ -75,6 +75,14 @@ pub fn specialize_on(comptime T: type) type {
             .{ 0, 0, 0, 1 },
         };
 
+        pub fn mat3_from_mat4(mat: Mat4) Mat3 {
+            return .{
+                .{ mat[0][0], mat[0][1], mat[0][2] },
+                .{ mat[1][0], mat[1][1], mat[1][2] },
+                .{ mat[2][0], mat[2][1], mat[2][2] },
+            };
+        }
+
         // Vector Functions
         fn assertValidVector(comptime TVec: type, arg_name: []const u8) void {
             if (@typeInfo(TVec) != .Vector or @typeInfo(TVec).Vector.child != T)
@@ -327,6 +335,106 @@ pub fn specialize_on(comptime T: type) type {
                 @shuffle(f32, temp3, temp4, [4]i32{ 0, 2, ~@as(i32, 0), ~@as(i32, 2) }),
                 @shuffle(f32, temp3, temp4, [4]i32{ 1, 3, ~@as(i32, 1), ~@as(i32, 3) }),
             };
+        }
+
+        pub fn inverse(mat: Mat4) Mat4 {
+            const mt = transpose(mat);
+            var v0: [4]Vec4 = undefined;
+            var v1: [4]Vec4 = undefined;
+
+            v0[0] = swizzle(mt[2], .{ .x, .x, .y, .y });
+            v1[0] = swizzle(mt[3], .{ .z, .w, .z, .w });
+            v0[1] = swizzle(mt[0], .{ .x, .x, .y, .y });
+            v1[1] = swizzle(mt[1], .{ .z, .w, .z, .w });
+            v0[2] = @shuffle(f32, mt[2], mt[0], [4]i32{ 0, 2, ~@as(i32, 0), ~@as(i32, 2) });
+            v1[2] = @shuffle(f32, mt[3], mt[1], [4]i32{ 1, 3, ~@as(i32, 1), ~@as(i32, 3) });
+
+            var d0 = v0[0] * v1[0];
+            var d1 = v0[1] * v1[1];
+            var d2 = v0[2] * v1[2];
+
+            v0[0] = swizzle(mt[2], .{ .z, .w, .z, .w });
+            v1[0] = swizzle(mt[3], .{ .x, .x, .y, .y });
+            v0[1] = swizzle(mt[0], .{ .z, .w, .z, .w });
+            v1[1] = swizzle(mt[1], .{ .x, .x, .y, .y });
+            v0[2] = @shuffle(f32, mt[2], mt[0], [4]i32{ 1, 3, ~@as(i32, 1), ~@as(i32, 3) });
+            v1[2] = @shuffle(f32, mt[3], mt[1], [4]i32{ 0, 2, ~@as(i32, 0), ~@as(i32, 2) });
+
+            d0 = @mulAdd(Vec4, -v0[0], v1[0], d0);
+            d1 = @mulAdd(Vec4, -v0[1], v1[1], d1);
+            d2 = @mulAdd(Vec4, -v0[2], v1[2], d2);
+
+            v0[0] = swizzle(mt[1], .{ .y, .z, .x, .y });
+            v1[0] = @shuffle(f32, d0, d2, [4]i32{ ~@as(i32, 1), 1, 3, 0 });
+            v0[1] = swizzle(mt[0], .{ .z, .x, .y, .x });
+            v1[1] = @shuffle(f32, d0, d2, [4]i32{ 3, ~@as(i32, 1), 1, 2 });
+            v0[2] = swizzle(mt[3], .{ .y, .z, .x, .y });
+            v1[2] = @shuffle(f32, d1, d2, [4]i32{ ~@as(i32, 3), 1, 3, 0 });
+            v0[3] = swizzle(mt[2], .{ .z, .x, .y, .x });
+            v1[3] = @shuffle(f32, d1, d2, [4]i32{ 3, ~@as(i32, 3), 1, 2 });
+
+            var c0 = v0[0] * v1[0];
+            var c2 = v0[1] * v1[1];
+            var c4 = v0[2] * v1[2];
+            var c6 = v0[3] * v1[3];
+
+            v0[0] = swizzle(mt[1], .{ .z, .w, .y, .z });
+            v1[0] = @shuffle(f32, d0, d2, [4]i32{ 3, 0, 1, ~@as(i32, 0) });
+            v0[1] = swizzle(mt[0], .{ .w, .z, .w, .y });
+            v1[1] = @shuffle(f32, d0, d2, [4]i32{ 2, 1, ~@as(i32, 0), 0 });
+            v0[2] = swizzle(mt[3], .{ .z, .w, .y, .z });
+            v1[2] = @shuffle(f32, d1, d2, [4]i32{ 3, 0, 1, ~@as(i32, 2) });
+            v0[3] = swizzle(mt[2], .{ .w, .z, .w, .y });
+            v1[3] = @shuffle(f32, d1, d2, [4]i32{ 2, 1, ~@as(i32, 2), 0 });
+
+            c0 = @mulAdd(Vec4, -v0[0], v1[0], c0);
+            c2 = @mulAdd(Vec4, -v0[1], v1[1], c2);
+            c4 = @mulAdd(Vec4, -v0[2], v1[2], c4);
+            c6 = @mulAdd(Vec4, -v0[3], v1[3], c6);
+
+            v0[0] = swizzle(mt[1], .{ .w, .x, .w, .x });
+            v1[0] = @shuffle(f32, d0, d2, [4]i32{ 2, ~@as(i32, 1), ~@as(i32, 0), 2 });
+            v0[1] = swizzle(mt[0], .{ .y, .w, .x, .z });
+            v1[1] = @shuffle(f32, d0, d2, [4]i32{ ~@as(i32, 1), 0, 3, ~@as(i32, 0) });
+            v0[2] = swizzle(mt[3], .{ .w, .x, .w, .x });
+            v1[2] = @shuffle(f32, d1, d2, [4]i32{ 2, ~@as(i32, 3), ~@as(i32, 2), 2 });
+            v0[3] = swizzle(mt[2], .{ .y, .w, .x, .z });
+            v1[3] = @shuffle(f32, d1, d2, [4]i32{ ~@as(i32, 3), 0, 3, ~@as(i32, 2) });
+
+            const c1 = @mulAdd(Vec4, -v0[0], v1[0], c0);
+            const c3 = @mulAdd(Vec4, v0[1], v1[1], c2);
+            const c5 = @mulAdd(Vec4, -v0[2], v1[2], c4);
+            const c7 = @mulAdd(Vec4, v0[3], v1[3], c6);
+
+            c0 = @mulAdd(Vec4, v0[0], v1[0], c0);
+            c2 = @mulAdd(Vec4, -v0[1], v1[1], c2);
+            c4 = @mulAdd(Vec4, v0[2], v1[2], c4);
+            c6 = @mulAdd(Vec4, -v0[3], v1[3], c6);
+
+            var mr: Mat4 = .{
+                .{ c0[0], c1[1], c0[2], c1[3] },
+                .{ c2[0], c3[1], c2[2], c3[3] },
+                .{ c4[0], c5[1], c4[2], c5[3] },
+                .{ c6[0], c7[1], c6[2], c7[3] },
+            };
+
+            const det = dot(mr[0], mt[0]);
+
+            if (std.math.approxEqAbs(f32, det, 0.0, std.math.floatEps(f32))) {
+                return .{
+                    .{ 0.0, 0.0, 0.0, 0.0 },
+                    .{ 0.0, 0.0, 0.0, 0.0 },
+                    .{ 0.0, 0.0, 0.0, 0.0 },
+                    .{ 0.0, 0.0, 0.0, 0.0 },
+                };
+            }
+
+            const scalar: Vec4 = @splat(1.0 / det);
+            mr[0] *= scalar;
+            mr[1] *= scalar;
+            mr[2] *= scalar;
+            mr[3] *= scalar;
+            return mr;
         }
 
         /// Creates a look matrix.
