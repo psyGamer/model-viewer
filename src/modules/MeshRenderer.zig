@@ -80,8 +80,14 @@ pub fn init(world: *World, allocator: std.mem.Allocator) !void {
         .depth_compare = .less,
     };
 
+    const file = try std.fs.cwd().openFile("assets/shaders/mesh.wgsl", .{});
+    defer file.close();
+
+    const data = try file.readToEndAllocOptions(allocator, std.math.maxInt(usize), null, @alignOf(u8), 0);
+    defer allocator.free(data);
+
     const pipeline = b: {
-        const shader_module = core.device.createShaderModuleWGSL("shader.wgsl", @embedFile("../shaders/shader.wgsl"));
+        const shader_module = core.device.createShaderModuleWGSL("Solid Mesh", data);
         defer shader_module.release();
 
         break :b core.device.createRenderPipeline(&.{
@@ -105,7 +111,7 @@ pub fn init(world: *World, allocator: std.mem.Allocator) !void {
     };
 
     const pipeline_wireframe = b: {
-        const shader_module = core.device.createShaderModuleWGSL("wireframe.wgsl", @embedFile("../shaders/wireframe.wgsl"));
+        const shader_module = core.device.createShaderModuleWGSL("Wireframe Mesh", data);
         defer shader_module.release();
 
         break :b core.device.createRenderPipeline(&.{
@@ -116,12 +122,12 @@ pub fn init(world: *World, allocator: std.mem.Allocator) !void {
             },
             .fragment = &gpu.FragmentState.init(.{
                 .module = shader_module,
-                .entry_point = "frag_main",
+                .entry_point = "frag_main_wireframe",
                 .targets = &.{color_target_state},
             }),
             .vertex = gpu.VertexState.init(.{
                 .module = shader_module,
-                .entry_point = "vertex_main",
+                .entry_point = "vertex_main_wireframe",
                 .buffers = &.{},
             }),
             .depth_stencil = &depth_stencil_state,
@@ -171,6 +177,7 @@ pub fn deinit(world: *World, _: std.mem.Allocator) !void {
     mesh_renderer.pipeline.release();
     mesh_renderer.pipieline_wireframe.release();
 
+    mesh_renderer.depth_texture.destroy();
     mesh_renderer.depth_texture.release();
     mesh_renderer.depth_texture_view.release();
 
@@ -178,6 +185,10 @@ pub fn deinit(world: *World, _: std.mem.Allocator) !void {
 
     var iter = mesh_renderer.mesh_cache.valueIterator();
     while (iter.next()) |cache| {
+        cache.vertex_buffer.destroy();
+        cache.index_buffer.destroy();
+        cache.uniform_buffer.destroy();
+
         cache.vertex_buffer.release();
         cache.index_buffer.release();
         cache.bind_group.release();
@@ -185,13 +196,7 @@ pub fn deinit(world: *World, _: std.mem.Allocator) !void {
     mesh_renderer.mesh_cache.deinit();
 }
 
-pub fn update(world: *World, arena: std.mem.Allocator) !void {
-    _ = world; // autofix
-    _ = arena; // autofix
-}
-
-pub fn draw(world: *World, arena: std.mem.Allocator) !void {
-    _ = arena; // autofix
+pub fn draw(world: *World, _: std.mem.Allocator) !void {
     const mesh_renderer = self(world);
 
     const back_buffer_view = core.swap_chain.getCurrentTextureView().?;
