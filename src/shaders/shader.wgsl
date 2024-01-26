@@ -12,7 +12,8 @@ struct Vertex {
 };
 
 @binding(0) @group(0) var<uniform> uniforms : Uniforms;
-@binding(0) @group(1) var<storage, read> vertices : array<Vertex>;
+@binding(1) @group(0) var<storage, read> vertices : array<Vertex>;
+@binding(2) @group(0) var<storage, read> indices : array<u32>;
 
 struct VertexInput {
     @builtin(vertex_index) vertexID : u32
@@ -24,10 +25,11 @@ struct VertexOutput {
 };
 
 @vertex fn vertex_main(vertex: VertexInput) -> VertexOutput {
+    let vertexID = indices[vertex.vertexID];
     var output : VertexOutput;
-    output.Position = (uniforms.model * vec4<f32>(vertices[vertex.vertexID].Position, 1.0)).xyz;
+    output.Position = (uniforms.model * vec4<f32>(vertices[vertexID].Position, 1.0)).xyz;
     output.BuiltinPosition = uniforms.proj * uniforms.view * vec4<f32>(output.Position, 1.0);
-    output.Normal = uniforms.normal * vertices[vertex.vertexID].Normal;
+    output.Normal = uniforms.normal * vertices[vertexID].Normal;
     return output;
 }
 

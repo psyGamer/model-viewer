@@ -53,7 +53,7 @@ pub fn deinit(world: *World, allocator: std.mem.Allocator) !void {
     _ = engine; // autofix
 }
 
-pub fn update(world: *World) !void {
+pub fn update(world: *World, arena: std.mem.Allocator) !void {
     var engine = self(world);
     var mesh_renderer = getModule(MeshRenderer, MeshRenderer.name, world);
 
@@ -142,15 +142,9 @@ pub fn update(world: *World) !void {
     mesh_renderer.camera.updateVectors();
 
     const queue = core.queue;
-    const encoder = core.device.createCommandEncoder(null);
+    _ = queue; // autofix
 
-    try world.send(null, .draw, .{encoder});
-
-    var command = encoder.finish(null);
-    encoder.release();
-
-    queue.submit(&[_]*gpu.CommandBuffer{command});
-    command.release();
+    try world.send(null, .draw, .{arena});
 
     core.swap_chain.present();
 

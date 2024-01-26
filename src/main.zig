@@ -10,8 +10,10 @@ const World = @import("modules/Engine.zig").World;
 
 gpa: std.heap.GeneralPurposeAllocator(.{}),
 allocator: std.mem.Allocator,
+arena: std.heap.ArenaAllocator,
 
 model: ecs.EntityID,
+model2: ecs.EntityID,
 
 world: World,
 
@@ -24,6 +26,8 @@ pub fn init(app: *App) !void {
 
     app.gpa = .{};
     app.allocator = app.gpa.allocator();
+    app.arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+
     app.world = try World.init(app.allocator);
 
     try app.world.send(null, .init, .{app.allocator});
@@ -36,11 +40,22 @@ pub fn init(app: *App) !void {
         .scale = .{ 1, 1, 1 },
     });
     try app.world.entities.setComponent(app.model, .mesh_renderer, .mesh, mesh);
+
+    const mesh2 = try Model.load(app.allocator, "assets/dragon.obj");
+    app.model2 = try app.world.entities.new();
+    try app.world.entities.setComponent(app.model2, .mesh_renderer, .transform, .{
+        .position = .{ 0, 0, 0 },
+        .rotation = .{ 0, 0, std.math.degreesToRadians(f32, 22.0) },
+        .scale = .{ 0.2, 0.2, 0.2 },
+    });
+    try app.world.entities.setComponent(app.model2, .mesh_renderer, .mesh, mesh2);
 }
 
 pub fn deinit(app: *App) void {
     const mesh = app.world.entities.getComponent(app.model, .mesh_renderer, .mesh).?;
     mesh.deinit(app.allocator);
+    const mesh2 = app.world.entities.getComponent(app.model2, .mesh_renderer, .mesh).?;
+    mesh2.deinit(app.allocator);
 
     try app.world.send(null, .deinit, .{app.allocator});
 
@@ -51,6 +66,16 @@ pub fn deinit(app: *App) void {
 }
 
 pub fn update(app: *App) !bool {
-    try app.world.send(null, .update, .{});
+    var transform = app.world.entities.getComponent(app.model, .mesh_renderer, .transform).?;
+    transform.rotation[1] += std.math.degreesToRadians(f32, 45.0) * core.delta_time;
+    try app.world.entities.setComponent(app.model, .mesh_renderer, .transform, transform);
+
+    transform = app.world.entities.getComponent(app.model2, .mesh_renderer, .transform).?;
+    transform.rotation[0] += std.math.degreesToRadians(f32, -11.0) * core.delta_time;
+    try app.world.entities.setComponent(app.model2, .mesh_renderer, .transform, transform);
+
+    try app.world.send(null, .update, .{app.arena.allocator()});
+    _ = app.arena.reset(.retain_capacity);
+
     return app.world.mod.engine.state.should_close; // Slightly ugly dependency on Engine, but ehh..
 }
