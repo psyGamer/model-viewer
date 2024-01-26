@@ -25,7 +25,7 @@ fn self(world: *World) *@This() {
 }
 
 const MeshCache = struct {
-    vertex_buffer: *gpu.Buffer,
+    vertex_buffers: [@typeInfo(Mesh.Vertex).Struct.fields.len]*gpu.Buffer,
     index_buffer: *gpu.Buffer,
     uniform_buffer: *gpu.Buffer,
     bind_group: *gpu.BindGroup,
@@ -58,12 +58,17 @@ pub fn init(world: *World, allocator: std.mem.Allocator) !void {
     log.info("Initializing Mesh Renderer...", .{});
     const mesh_renderer = self(world);
 
+    comptime var entries: []const gpu.BindGroupLayout.Entry = &.{
+        gpu.BindGroupLayout.Entry.buffer(0, .{ .vertex = true, .fragment = true }, .uniform, false, @sizeOf(UniformBufferObject)),
+        gpu.BindGroupLayout.Entry.buffer(1, .{ .vertex = true }, .read_only_storage, false, @sizeOf(u32)),
+    };
+    inline for (@typeInfo(Mesh.Vertex).Struct.fields) |field| {
+        entries = entries ++ comptime [_]gpu.BindGroupLayout.Entry{
+            gpu.BindGroupLayout.Entry.buffer(entries.len, .{ .vertex = true }, .read_only_storage, false, @sizeOf(field.type)),
+        };
+    }
     const bind_group_layout = core.device.createBindGroupLayout(&gpu.BindGroupLayout.Descriptor.init(.{
-        .entries = &.{
-            gpu.BindGroupLayout.Entry.buffer(0, .{ .vertex = true, .fragment = true }, .uniform, false, @sizeOf(UniformBufferObject)),
-            gpu.BindGroupLayout.Entry.buffer(1, .{ .vertex = true }, .read_only_storage, false, @sizeOf(Mesh.Vertex)),
-            gpu.BindGroupLayout.Entry.buffer(2, .{ .vertex = true }, .read_only_storage, false, @sizeOf(u32)),
-        },
+        .entries = entries,
     }));
 
     const pipeline_layout = core.device.createPipelineLayout(&gpu.PipelineLayout.Descriptor.init(.{
@@ -189,11 +194,14 @@ pub fn deinit(world: *World, _: std.mem.Allocator) !void {
 
     var iter = mesh_renderer.mesh_cache.valueIterator();
     while (iter.next()) |cache| {
-        cache.vertex_buffer.destroy();
+        inline for (0..@typeInfo(Mesh.Vertex).Struct.fields.len) |i| {
+            cache.vertex_buffers[i].destroy();
+            cache.vertex_buffers[i].release();
+        }
+
         cache.index_buffer.destroy();
         cache.uniform_buffer.destroy();
 
-        cache.vertex_buffer.release();
         cache.index_buffer.release();
         cache.bind_group.release();
     }
@@ -318,14 +326,20 @@ pub fn draw(world: *World, _: std.mem.Allocator) !void {
             const gop = try mesh_renderer.mesh_cache.getOrPut(mesh);
             var mesh_cache: *MeshCache = gop.value_ptr;
             if (!gop.found_existing) {
-                mesh_cache.vertex_buffer = core.device.createBuffer(&.{
-                    .usage = .{ .vertex = true, .storage = true },
-                    .size = mesh.vertices.len * @sizeOf(Mesh.Vertex),
-                    .mapped_at_creation = .true,
-                });
-                const vertex_mapped = mesh_cache.vertex_buffer.getMappedRange(Mesh.Vertex, 0, mesh.vertices.len).?;
-                @memcpy(vertex_mapped, mesh.vertices);
-                mesh_cache.vertex_buffer.unmap();
+                inline for (@typeInfo(Mesh.Vertex).Struct.fields, 0..) |field, i| {
+                    mesh_cache.vertex_buffers[i] = core.device.createBuffer(&.{
+                        .usage = .{ .vertex = true, .storage = true },
+                        .size = mesh.vertices.len * @sizeOf(field.type),
+                        .mapped_at_creation = .true,
+                    });
+                    const vertex_mapped = mesh_cache.vertex_buffers[i].getMappedRange(field.type, 0, mesh.vertices.len).?;
+                    // Can't memcpy, because the source is still an array-of-structs
+                    // @memcpy(vertex_mapped, mesh.vertices);
+                    for (mesh.vertices, vertex_mapped) |vertex, *mapped| {
+                        mapped.* = @field(vertex, field.name);
+                    }
+                    mesh_cache.vertex_buffers[i].unmap();
+                }
 
                 mesh_cache.index_buffer = core.device.createBuffer(&.{
                     .usage = .{ .index = true, .storage = true },
@@ -345,13 +359,15 @@ pub fn draw(world: *World, _: std.mem.Allocator) !void {
                 @memcpy(uniform_mapped, &[_]UniformBufferObject{ubo});
                 mesh_cache.uniform_buffer.unmap();
 
+                var entries: [2 + @typeInfo(Mesh.Vertex).Struct.fields.len]gpu.BindGroup.Entry = undefined;
+                entries[0] = gpu.BindGroup.Entry.buffer(0, mesh_cache.uniform_buffer, 0, @sizeOf(UniformBufferObject));
+                entries[1] = gpu.BindGroup.Entry.buffer(1, mesh_cache.index_buffer, 0, mesh.indices.len * @sizeOf(u32));
+                inline for (@typeInfo(Mesh.Vertex).Struct.fields, 0..) |field, i| {
+                    entries[2 + i] = gpu.BindGroup.Entry.buffer(2 + i, mesh_cache.vertex_buffers[i], 0, mesh.vertices.len * @sizeOf(field.type));
+                }
                 mesh_cache.bind_group = core.device.createBindGroup(&gpu.BindGroup.Descriptor.init(.{
                     .layout = mesh_renderer.bind_group_layout,
-                    .entries = &.{
-                        gpu.BindGroup.Entry.buffer(0, mesh_cache.uniform_buffer, 0, @sizeOf(UniformBufferObject)),
-                        gpu.BindGroup.Entry.buffer(1, mesh_cache.vertex_buffer, 0, mesh.vertices.len * @sizeOf(Mesh.Vertex)),
-                        gpu.BindGroup.Entry.buffer(2, mesh_cache.index_buffer, 0, mesh.indices.len * @sizeOf(u32)),
-                    },
+                    .entries = &entries,
                 }));
             } else {
                 // Update existing uniform buffer

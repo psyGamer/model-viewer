@@ -6,14 +6,16 @@ struct Uniforms {
     camPos: vec3<f32>,
 };
 
-struct Vertex {
-    Position: vec3<f32>,
-    Normal: vec3<f32>,
-};
+// Vertex layout for reference
+// struct Vertex {
+//     Position: vec3<f32>,
+//     Normal: vec3<f32>,
+// };
 
 @binding(0) @group(0) var<uniform> uniforms : Uniforms;
-@binding(1) @group(0) var<storage, read> vertices : array<Vertex>;
-@binding(2) @group(0) var<storage, read> indices : array<u32>;
+@binding(1) @group(0) var<storage, read> indices : array<u32>;
+@binding(2) @group(0) var<storage, read> positions : array<vec3<f32>>;
+@binding(3) @group(0) var<storage, read> normals : array<vec3<f32>>;
 
 struct VertexInput {
     @builtin(vertex_index) VertexID : u32
@@ -27,9 +29,9 @@ struct VertexOutput {
 @vertex fn vertex_main(vertex: VertexInput) -> VertexOutput {
     let vertexID = indices[vertex.VertexID];
     var output : VertexOutput;
-    output.Position = (uniforms.model * vec4<f32>(vertices[vertexID].Position, 1.0)).xyz;
+    output.Position = (uniforms.model * vec4<f32>(positions[vertexID], 1.0)).xyz;
     output.BuiltinPosition = uniforms.proj * uniforms.view * vec4<f32>(output.Position, 1.0);
-    output.Normal = uniforms.normal * vertices[vertexID].Normal;
+    output.Normal = uniforms.normal * normals[vertexID];
     return output;
 }
 
@@ -41,7 +43,7 @@ struct VertexOutput {
     var elementIndexIndex = 3u * triangleIndex + localToElement[localVertexIndex];
     var elementIndex = indices[elementIndexIndex];
     
-    return uniforms.proj * uniforms.view * uniforms.model * vec4<f32>(vertices[elementIndex].Position, 1.0);
+    return uniforms.proj * uniforms.view * uniforms.model * vec4<f32>(positions[elementIndex], 1.0);
 }
 
 struct FragmentInput {
