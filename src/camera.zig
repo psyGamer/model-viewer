@@ -1,6 +1,6 @@
 const std = @import("std");
 const zm = @import("zmath");
-const m = @import("math.zig");
+const m = @import("math");
 
 const Camera = @This();
 

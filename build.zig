@@ -14,6 +14,7 @@ pub fn build(b: *std.Build) !void {
 
     const zmath_dep = b.anonymousDependency("deps/zmath", @import("deps/zmath/build.zig"), .{});
     const model3d_dep = b.dependency("mach_model3d", .{});
+    const ecs_dep = b.dependency("mach_ecs", .{});
 
     const app = try mach_core.App.init(b, mach_core_dep.builder, .{
         .name = "model-viewer",
@@ -23,6 +24,12 @@ pub fn build(b: *std.Build) !void {
         .deps = &[_]std.Build.Module.Import{
             .{ .name = "zmath", .module = zmath_dep.module("zmath") },
             .{ .name = "model3d", .module = model3d_dep.module("mach-model3d") },
+            .{ .name = "ecs", .module = ecs_dep.module("mach-ecs") },
+
+            .{
+                .name = "math",
+                .module = b.addModule("math", .{ .root_source_file = .{ .path = "src/math.zig" } }),
+            },
         },
     });
     app.compile.linkLibC();

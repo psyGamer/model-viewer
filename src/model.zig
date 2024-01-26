@@ -4,7 +4,7 @@ const gpu = core.gpu;
 const zm = @import("zmath");
 const m3d = @import("model3d");
 
-const m = @import("math.zig");
+const m = @import("math");
 const VertexWriter = @import("vertex_writer.zig").VertexWriter;
 
 const Model = @This();
