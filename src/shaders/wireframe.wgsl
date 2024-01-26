@@ -10,8 +10,8 @@ struct Vertex {
 };
 
 @binding(0) @group(0) var<uniform> uniforms : Uniforms;
-@binding(1) @group(0) var<storage, read> vertices : array<Vertex>;
-@binding(2) @group(0) var<storage, read> indices : array<u32>;
+@binding(0) @group(1) var<storage, read> vertices : array<Vertex>;
+@binding(1) @group(1) var<storage, read> indices : array<u32>;
 
 struct VertexInput {
     @builtin(vertex_index) vertexID : u32

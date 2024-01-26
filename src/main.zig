@@ -1,21 +1,17 @@
-const builtin = @import("builtin");
 const std = @import("std");
-const core = @import("mach-core");
-const gpu = core.gpu;
-const m3d = @import("model3d");
 const ecs = @import("ecs");
+const core = @import("mach-core");
 
-const m = @import("math");
 const Model = @import("model.zig");
-const Camera = @import("camera.zig");
 
 pub const App = @This();
-pub const World = ecs.World(.{Engine});
 
-const Engine = @import("engine.zig");
+const World = @import("modules/Engine.zig").World;
 
 gpa: std.heap.GeneralPurposeAllocator(.{}),
 allocator: std.mem.Allocator,
+
+model: ecs.EntityID,
 
 world: World,
 
@@ -31,9 +27,21 @@ pub fn init(app: *App) !void {
     app.world = try World.init(app.allocator);
 
     try app.world.send(null, .init, .{app.allocator});
+
+    const mesh = try Model.load(app.allocator, "assets/test.obj");
+    app.model = try app.world.entities.new();
+    try app.world.entities.setComponent(app.model, .mesh_renderer, .transform, .{
+        .position = .{ 0, 0, 0 },
+        .rotation = .{ 0, 0, 0 },
+        .scale = .{ 1, 1, 1 },
+    });
+    try app.world.entities.setComponent(app.model, .mesh_renderer, .mesh, mesh);
 }
 
 pub fn deinit(app: *App) void {
+    const mesh = app.world.entities.getComponent(app.model, .mesh_renderer, .mesh).?;
+    mesh.deinit(app.allocator);
+
     try app.world.send(null, .deinit, .{app.allocator});
 
     app.world.deinit();
