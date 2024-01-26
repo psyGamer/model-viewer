@@ -66,6 +66,13 @@ pub fn deinit(app: *App) void {
 }
 
 pub fn update(app: *App) !bool {
+    var iter = core.pollEvents();
+    while (iter.next()) |event| {
+        if (event == .close) return true;
+
+        try app.world.send(null, .handleEvent, .{event});
+    }
+
     var transform = app.world.entities.getComponent(app.model, .mesh_renderer, .transform).?;
     transform.rotation[1] += std.math.degreesToRadians(f32, 45.0) * core.delta_time;
     try app.world.entities.setComponent(app.model, .mesh_renderer, .transform, transform);
@@ -77,5 +84,5 @@ pub fn update(app: *App) !bool {
     try app.world.send(null, .update, .{app.arena.allocator()});
     _ = app.arena.reset(.retain_capacity);
 
-    return app.world.mod.engine.state.should_close; // Slightly ugly dependency on Engine, but ehh..
+    return false;
 }

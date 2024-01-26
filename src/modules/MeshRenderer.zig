@@ -49,8 +49,10 @@ depth_texture_view: *gpu.TextureView,
 bind_group_layout: *gpu.BindGroupLayout,
 mesh_cache: MeshCacheMap,
 
+// TODO: Should this be part of MeshRenderer? Probably not..
 camera: Camera,
-wireframe_visible: bool = false,
+prev_mouse_pos: core.Position,
+wireframe_visible: bool,
 
 pub fn init(world: *World, allocator: std.mem.Allocator) !void {
     log.info("Initializing Mesh Renderer...", .{});
@@ -163,6 +165,8 @@ pub fn init(world: *World, allocator: std.mem.Allocator) !void {
         .mesh_cache = MeshCacheMap.init(allocator),
 
         .camera = Camera.init(90, 0, 0, m.vec3(0, 0, -5)),
+        .prev_mouse_pos = .{ .x = 0, .y = 0 },
+        .wireframe_visible = false,
     };
 
     mesh_renderer.camera.pitch = 0;
@@ -194,6 +198,64 @@ pub fn deinit(world: *World, _: std.mem.Allocator) !void {
         cache.bind_group.release();
     }
     mesh_renderer.mesh_cache.deinit();
+}
+
+pub fn handleEvent(world: *World, event: core.Event) !void {
+    var mesh_renderer = self(world);
+
+    switch (event) {
+        .key_press => |ev| {
+            switch (ev.key) {
+                .f3 => mesh_renderer.wireframe_visible = !mesh_renderer.wireframe_visible,
+                else => {},
+            }
+        },
+        .mouse_press => |ev| {
+            if (ev.button == .left) {
+                core.setCursorMode(.disabled);
+            }
+        },
+        .mouse_release => |ev| {
+            if (ev.button == .left) {
+                core.setCursorMode(.normal);
+            }
+        },
+        .mouse_motion => |ev| {
+            if (core.mousePressed(.left)) {
+                const delta: core.Position = .{
+                    .x = ev.pos.x - mesh_renderer.prev_mouse_pos.x,
+                    .y = ev.pos.y - mesh_renderer.prev_mouse_pos.y,
+                };
+                const camera_rotate_speed: f32 = 0.25;
+                mesh_renderer.camera.yaw -= @as(f32, @floatCast(delta.x)) * camera_rotate_speed;
+                mesh_renderer.camera.pitch -= @as(f32, @floatCast(delta.y)) * camera_rotate_speed;
+            }
+            mesh_renderer.prev_mouse_pos = ev.pos;
+        },
+        .framebuffer_resize => |size| {
+            mesh_renderer.depth_texture.release();
+            mesh_renderer.depth_texture = core.device.createTexture(&gpu.Texture.Descriptor.init(.{
+                .size = .{
+                    .width = size.width,
+                    .height = size.height,
+                },
+                .format = .depth24_plus,
+                .usage = .{
+                    .render_attachment = true,
+                    .texture_binding = true,
+                },
+            }));
+
+            mesh_renderer.depth_texture_view.release();
+            mesh_renderer.depth_texture_view = mesh_renderer.depth_texture.createView(&.{
+                .format = .depth24_plus,
+                .dimension = .dimension_2d,
+                .array_layer_count = 1,
+                .mip_level_count = 1,
+            });
+        },
+        else => {},
+    }
 }
 
 pub fn draw(world: *World, _: std.mem.Allocator) !void {

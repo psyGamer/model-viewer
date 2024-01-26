@@ -16,10 +16,6 @@ pub const World = ecs.World(.{ Engine, MeshRenderer });
 timer: core.Timer,
 title_timer: core.Timer,
 
-prev_mouse_pos: core.Position,
-
-should_close: bool = false,
-
 pub const name = .engine;
 const log = std.log.scoped(name);
 
@@ -41,8 +37,6 @@ pub fn init(world: *World, allocator: std.mem.Allocator) !void {
     engine.* = .{
         .timer = try core.Timer.start(),
         .title_timer = try core.Timer.start(),
-
-        .prev_mouse_pos = .{ .x = 0, .y = 0 },
     };
 }
 
@@ -53,75 +47,23 @@ pub fn deinit(world: *World, allocator: std.mem.Allocator) !void {
     _ = engine; // autofix
 }
 
+pub fn handleEvent(_: *World, event: core.Event) !void {
+    switch (event) {
+        .key_press => |ev| {
+            switch (ev.key) {
+                .one => core.setVSync(.none),
+                .two => core.setVSync(.double),
+                .three => core.setVSync(.triple),
+                else => {},
+            }
+        },
+        else => {},
+    }
+}
+
 pub fn update(world: *World, arena: std.mem.Allocator) !void {
     var engine = self(world);
     var mesh_renderer = getModule(MeshRenderer, MeshRenderer.name, world);
-
-    var iter = core.pollEvents();
-    while (iter.next()) |event| {
-        switch (event) {
-            .key_press => |ev| {
-                switch (ev.key) {
-                    .one => core.setVSync(.none),
-                    .two => core.setVSync(.double),
-                    .three => core.setVSync(.triple),
-                    .f3 => mesh_renderer.wireframe_visible = !mesh_renderer.wireframe_visible,
-
-                    else => {},
-                }
-            },
-            .mouse_press => |ev| {
-                if (ev.button == .left) {
-                    core.setCursorMode(.disabled);
-                }
-            },
-            .mouse_release => |ev| {
-                if (ev.button == .left) {
-                    core.setCursorMode(.normal);
-                }
-            },
-            .mouse_motion => |ev| {
-                if (core.mousePressed(.left)) {
-                    const delta: core.Position = .{
-                        .x = ev.pos.x - engine.prev_mouse_pos.x,
-                        .y = ev.pos.y - engine.prev_mouse_pos.y,
-                    };
-                    const camera_rotate_speed: f32 = 0.25;
-                    mesh_renderer.camera.yaw -= @as(f32, @floatCast(delta.x)) * camera_rotate_speed;
-                    mesh_renderer.camera.pitch -= @as(f32, @floatCast(delta.y)) * camera_rotate_speed;
-                }
-                engine.prev_mouse_pos = ev.pos;
-            },
-            .framebuffer_resize => |size| {
-                // TODO: Move this into MeshRenderer
-                mesh_renderer.depth_texture.release();
-                mesh_renderer.depth_texture = core.device.createTexture(&gpu.Texture.Descriptor.init(.{
-                    .size = .{
-                        .width = size.width,
-                        .height = size.height,
-                    },
-                    .format = .depth24_plus,
-                    .usage = .{
-                        .render_attachment = true,
-                        .texture_binding = true,
-                    },
-                }));
-
-                mesh_renderer.depth_texture_view.release();
-                mesh_renderer.depth_texture_view = mesh_renderer.depth_texture.createView(&.{
-                    .format = .depth24_plus,
-                    .dimension = .dimension_2d,
-                    .array_layer_count = 1,
-                    .mip_level_count = 1,
-                });
-            },
-            .close => {
-                engine.should_close = true;
-                return;
-            },
-            else => {},
-        }
-    }
 
     // Camera movement
     const camera_move_speed: m.Vec3 = @splat((@as(f32, if (core.keyPressed(.left_shift)) 10 else 3)) * core.delta_time);
