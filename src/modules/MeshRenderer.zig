@@ -241,6 +241,7 @@ pub fn handleEvent(world: *World, event: core.Event) !void {
             mesh_renderer.prev_mouse_pos = ev.pos;
         },
         .framebuffer_resize => |size| {
+            mesh_renderer.depth_texture.destroy();
             mesh_renderer.depth_texture.release();
             mesh_renderer.depth_texture = core.device.createTexture(&gpu.Texture.Descriptor.init(.{
                 .size = .{
@@ -264,6 +265,27 @@ pub fn handleEvent(world: *World, event: core.Event) !void {
         },
         else => {},
     }
+}
+
+pub fn update(world: *World, _: std.mem.Allocator) !void {
+    const mesh_renderer = self(world);
+
+    // Camera movement
+    const camera_move_speed: m.Vec3 = @splat((@as(f32, if (core.keyPressed(.left_shift)) 10 else 3)) * core.delta_time);
+    if (core.keyPressed(.w)) mesh_renderer.camera.position += mesh_renderer.camera.front * camera_move_speed;
+    if (core.keyPressed(.s)) mesh_renderer.camera.position -= mesh_renderer.camera.front * camera_move_speed;
+    if (core.keyPressed(.d)) mesh_renderer.camera.position += mesh_renderer.camera.right * camera_move_speed;
+    if (core.keyPressed(.a)) mesh_renderer.camera.position -= mesh_renderer.camera.right * camera_move_speed;
+    if (core.keyPressed(.space)) mesh_renderer.camera.position += Camera.world_up * camera_move_speed;
+    if (core.keyPressed(.left_control)) mesh_renderer.camera.position -= Camera.world_up * camera_move_speed;
+    if (core.keyPressed(.left)) mesh_renderer.camera.pitch -= 5;
+    if (core.keyPressed(.right)) mesh_renderer.camera.pitch += 5;
+
+    if (core.mousePressed(.left)) {}
+
+    mesh_renderer.camera.yaw = @mod(mesh_renderer.camera.yaw, 360);
+    mesh_renderer.camera.pitch = std.math.clamp(mesh_renderer.camera.pitch, -89.9, 89.9);
+    mesh_renderer.camera.updateVectors();
 }
 
 pub fn draw(world: *World, _: std.mem.Allocator) !void {

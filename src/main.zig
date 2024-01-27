@@ -32,7 +32,7 @@ pub fn init(app: *App) !void {
 
     try app.world.send(null, .init, .{app.allocator});
 
-    const mesh = try Model.load(app.allocator, "assets/test.obj");
+    const mesh = try Model.load(app.allocator, "assets/cube.m3d");
     app.model = try app.world.entities.new();
     try app.world.entities.setComponent(app.model, .mesh_renderer, .transform, .{
         .position = .{ 0, 0, 0 },
