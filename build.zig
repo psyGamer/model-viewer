@@ -14,17 +14,17 @@ pub fn build(b: *std.Build) !void {
 
     const zmath_dep = b.anonymousDependency("deps/zmath", @import("deps/zmath/build.zig"), .{});
     const model3d_dep = b.dependency("mach_model3d", .{});
-    const ecs_dep = b.dependency("mach_ecs", .{});
+    const ecs_dep = b.dependency("zig_ecs", .{});
 
     const app = try mach_core.App.init(b, mach_core_dep.builder, .{
         .name = "model-viewer",
-        .src = "src/main.zig",
+        .src = "src/app.zig",
         .target = target,
         .optimize = optimize,
         .deps = &[_]std.Build.Module.Import{
             .{ .name = "zmath", .module = zmath_dep.module("zmath") },
             .{ .name = "model3d", .module = model3d_dep.module("mach-model3d") },
-            .{ .name = "ecs", .module = ecs_dep.module("mach-ecs") },
+            .{ .name = "ecs", .module = ecs_dep.module("zig-ecs") },
 
             .{
                 .name = "math",

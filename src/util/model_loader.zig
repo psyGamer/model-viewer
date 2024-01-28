@@ -10,13 +10,12 @@ const c = @cImport({
 
 const VertexWriter = @import("vertex_writer.zig").VertexWriter;
 
-const World = @import("../modules/Engine.zig").World;
 const Mesh = @import("../components/Mesh.zig");
 const Material = @import("../components/material.zig").Material;
 const log = std.log.scoped(.model_loader);
 
 /// Loads the model and adds the required components to the entity.
-pub fn loadModel(world: *World, entity: ecs.EntityID, allocator: std.mem.Allocator, path: []const u8) !void {
+pub fn loadModel(reg: *ecs.Registry, entity: ecs.Entity, allocator: std.mem.Allocator, path: []const u8) !void {
     log.info("Loading model: {s}", .{path});
 
     const file = try std.fs.cwd().openFile(path, .{});
@@ -29,7 +28,7 @@ pub fn loadModel(world: *World, entity: ecs.EntityID, allocator: std.mem.Allocat
 
     const extension = std.fs.path.extension(path);
     if (std.mem.eql(u8, extension, ".m3d"))
-        try loadM3D(world, entity, allocator, data)
+        try loadM3D(reg, entity, allocator, data)
     else if (std.mem.eql(u8, extension, ".obj"))
         // try loadOBJ(allocator, data)
         unreachable // TODO
@@ -39,7 +38,7 @@ pub fn loadModel(world: *World, entity: ecs.EntityID, allocator: std.mem.Allocat
     }
 }
 
-fn loadM3D(world: *World, entity: ecs.EntityID, allocator: std.mem.Allocator, data: [:0]const u8) !void {
+fn loadM3D(reg: *ecs.Registry, entity: ecs.Entity, allocator: std.mem.Allocator, data: [:0]const u8) !void {
     const m3d_model = m3d.load(data, null, null, null) orelse return error.LoadModel;
 
     const vertex_count = m3d_model.handle.numvertex;
@@ -70,14 +69,14 @@ fn loadM3D(world: *World, entity: ecs.EntityID, allocator: std.mem.Allocator, da
     log.debug("  Packed Vertices: {}", .{vertex_writer.next_packed_index});
     log.debug("  Packed Indices: {}", .{vertex_writer.indices.len});
 
-    try world.entities.setComponent(entity, .mesh_renderer, .mesh, Mesh.init(
+    reg.add(entity, Mesh.init(
         try allocator.dupe(Mesh.Vertex, vertex_writer.vertexBuffer()),
         try allocator.dupe(u32, vertex_writer.indexBuffer()),
     ));
 
     if (m3d_model.handle.nummaterial == 0) {
         // Use a default material
-        try world.entities.setComponent(entity, .mesh_renderer, .material, Material{
+        reg.add(entity, Material{
             .diffuse_color = m.vec4_one,
             .ambiant_color = m.vec4_one,
             .specular_color = m.vec4_one,
@@ -135,7 +134,7 @@ fn loadM3D(world: *World, entity: ecs.EntityID, allocator: std.mem.Allocator, da
             }
         }
 
-        try world.entities.setComponent(entity, .mesh_renderer, .material, material);
+        reg.add(entity, material);
         break; // TODO: Support multiple materials?
     }
 }

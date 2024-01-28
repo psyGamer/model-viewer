@@ -13,9 +13,9 @@
             .url = "https://pkg.machengine.org/mach-model3d/04a493eb6c1a46b7f06f862b5e4d6bfcebad4cb5.tar.gz",
             .hash = "12204725f8a000dc5e27e5d7e68dc2d26a9db904639f18e8866d5d540edae629d149",
         },
-        .mach_ecs = .{
-            .url = "https://pkg.machengine.org/mach-ecs/83a3ed801008a976dd79e10068157b02c3b76a36.tar.gz",
-            .hash = "1220ed76b7395bfca9519ae58e7aa1c4ee94abc7e65b35a076f91d9c4ffa50de27e6",
+        .zig_ecs = .{
+            .url = "git+https://github.com/psyGamer/zig-ecs.git#ce3963df8e6f0aa323f4e84877bd6d5add876e32",
+            .hash = "12209f1207a78a57d71cabf3aca488bc1a44da503d72621be3427187adbba08288cd",
         },
     },
     .paths = .{""},
