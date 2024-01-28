@@ -12,12 +12,14 @@ pub fn specialize_on(comptime T: type) type {
         pub const VecSwizzle = enum { x, y, z, w };
 
         pub const vec2_zero: Vec2 = .{ 0, 0 };
+        pub const vec2_one: Vec2 = .{ 1, 1 };
         pub const vec2_pos_x: Vec2 = .{ 1, 0 };
         pub const vec2_neg_x: Vec2 = .{ -1, 0 };
         pub const vec2_pos_y: Vec2 = .{ 0, 1 };
         pub const vec2_neg_y: Vec2 = .{ 0, -1 };
 
         pub const vec3_zero: Vec3 = .{ 0, 0, 0 };
+        pub const vec3_one: Vec3 = .{ 1, 1, 1 };
         pub const vec3_pos_x: Vec3 = .{ 1, 0, 0 };
         pub const vec3_neg_x: Vec3 = .{ -1, 0, 0 };
         pub const vec3_pos_y: Vec3 = .{ 0, 1, 0 };
@@ -26,6 +28,7 @@ pub fn specialize_on(comptime T: type) type {
         pub const vec3_neg_z: Vec3 = .{ 0, 0, -1 };
 
         pub const vec4_zero: Vec4 = .{ 0, 0, 0, 0 };
+        pub const vec4_one: Vec4 = .{ 1, 1, 1, 1 };
         pub const vec4_neg_x: Vec4 = .{ -1, 0, 0, 0 };
         pub const vec4_pos_y: Vec4 = .{ 0, 1, 0, 0 };
         pub const vec4_neg_y: Vec4 = .{ 0, -1, 0, 0 };

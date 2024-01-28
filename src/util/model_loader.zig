@@ -13,10 +13,11 @@ const VertexWriter = @import("vertex_writer.zig").VertexWriter;
 const World = @import("../modules/Engine.zig").World;
 const Mesh = @import("../components/Mesh.zig");
 const Material = @import("../components/material.zig").Material;
+const log = std.log.scoped(.model_loader);
 
 /// Loads the model and adds the required components to the entity.
 pub fn loadModel(world: *World, entity: ecs.EntityID, allocator: std.mem.Allocator, path: []const u8) !void {
-    std.log.info("Loading model: {s}", .{path});
+    log.info("Loading model: {s}", .{path});
 
     const file = try std.fs.cwd().openFile(path, .{});
     defer file.close();
@@ -24,27 +25,18 @@ pub fn loadModel(world: *World, entity: ecs.EntityID, allocator: std.mem.Allocat
     const data = try file.readToEndAllocOptions(allocator, std.math.maxInt(usize), null, @alignOf(u8), 0);
     defer allocator.free(data);
 
-    std.log.debug("  Size: {} bytes", .{data.len});
+    log.debug("  Size: {} bytes", .{data.len});
 
     const extension = std.fs.path.extension(path);
     if (std.mem.eql(u8, extension, ".m3d"))
         try loadM3D(world, entity, allocator, data)
     else if (std.mem.eql(u8, extension, ".obj"))
         // try loadOBJ(allocator, data)
-        unreachable
+        unreachable // TODO
     else {
-        std.log.err("Unsupported model format: {s}", .{extension});
+        log.err("Unsupported model format: {s}", .{extension});
         return error.InvalidModelFormat;
     }
-    // defer vertex_writer.deinit(allocator);
-
-    // const vertices = vertex_writer.vertexBuffer();
-    // const indices = vertex_writer.indexBuffer();
-
-    // return Mesh.init(
-    //     try allocator.dupe(Mesh.Vertex, vertices),
-    //     try allocator.dupe(u32, indices),
-    // );
 }
 
 fn loadM3D(world: *World, entity: ecs.EntityID, allocator: std.mem.Allocator, data: [:0]const u8) !void {
@@ -56,8 +48,8 @@ fn loadM3D(world: *World, entity: ecs.EntityID, allocator: std.mem.Allocator, da
     const vertices = m3d_model.handle.vertex;
     const faces = m3d_model.handle.face;
 
-    std.log.debug("  Vertices: {}", .{vertex_count});
-    std.log.debug("  Faces: {}", .{face_count});
+    log.debug("  Vertices: {}", .{vertex_count});
+    log.debug("  Faces: {}", .{face_count});
 
     var vertex_writer = try VertexWriter(Mesh.Vertex, u32).init(allocator, face_count * 3, vertex_count, face_count * 3);
     defer vertex_writer.deinit(allocator);
@@ -75,55 +67,70 @@ fn loadM3D(world: *World, entity: ecs.EntityID, allocator: std.mem.Allocator, da
         }
     }
 
-    std.log.debug("  Packed Vertices: {}", .{vertex_writer.next_packed_index});
-    std.log.debug("  Packed Indices: {}", .{vertex_writer.indices.len});
+    log.debug("  Packed Vertices: {}", .{vertex_writer.next_packed_index});
+    log.debug("  Packed Indices: {}", .{vertex_writer.indices.len});
 
     try world.entities.setComponent(entity, .mesh_renderer, .mesh, Mesh.init(
         try allocator.dupe(Mesh.Vertex, vertex_writer.vertexBuffer()),
         try allocator.dupe(u32, vertex_writer.indexBuffer()),
     ));
 
-    for (m3d.materials(m3d_model)) |m3d_material| {
-        std.log.debug("  - Name: {s}", .{m3d_material.name});
+    if (m3d_model.handle.nummaterial == 0) {
+        // Use a default material
+        try world.entities.setComponent(entity, .mesh_renderer, .material, Material{
+            .diffuse_color = m.vec4_one,
+            .ambiant_color = m.vec4_one,
+            .specular_color = m.vec4_one,
+            .specular_exponent = 32,
+            .dissolve = 0,
+            .roughness = 0.5,
+            .metallic = 0,
+            .index_of_refraction = 1,
+        });
+        return;
+    }
+
+    for (m3d_model.handle.material[0..m3d_model.handle.nummaterial]) |m3d_material| {
+        log.debug("  - Name: {s}", .{m3d_material.name});
 
         var material: Material = undefined;
         for (m3d_material.prop[0..m3d_material.numprop]) |property| {
             switch (property.type) {
                 c.m3dp_Kd => {
-                    std.log.debug("    * Base Color: 0x{s}", .{std.fmt.fmtSliceHexUpper(std.mem.asBytes(&property.value.color))});
+                    log.debug("    * Base Color: 0x{s}", .{std.fmt.fmtSliceHexUpper(std.mem.asBytes(&property.value.color))});
                     material.diffuse_color = packedColorToVec4(property.value.color);
                 },
                 c.m3dp_Ka => {
-                    std.log.debug("    * Ambiant Color: 0x{s}", .{std.fmt.fmtSliceHexUpper(std.mem.asBytes(&property.value.color))});
+                    log.debug("    * Ambiant Color: 0x{s}", .{std.fmt.fmtSliceHexUpper(std.mem.asBytes(&property.value.color))});
                     material.ambiant_color = packedColorToVec4(property.value.color);
                 },
                 c.m3dp_Ks => {
-                    std.log.debug("    * Specular Color: 0x{s}", .{std.fmt.fmtSliceHexUpper(std.mem.asBytes(&property.value.color))});
+                    log.debug("    * Specular Color: 0x{s}", .{std.fmt.fmtSliceHexUpper(std.mem.asBytes(&property.value.color))});
                     material.specular_color = packedColorToVec4(property.value.color);
                 },
                 c.m3dp_d => {
-                    std.log.debug("    * Dissolve: {d}", .{property.value.fnum});
+                    log.debug("    * Dissolve: {d}", .{property.value.fnum});
                     material.dissolve = property.value.fnum;
                 },
                 c.m3dp_il => {
-                    std.log.debug("    * Illumination: {d}", .{property.value.num});
+                    log.debug("    * Illumination: {d}", .{property.value.num});
                     // TODO
                     // material.dissolve = property.value.fnum;
                 },
                 c.m3dp_Pr => {
-                    std.log.debug("    * Roughness: {d}", .{property.value.fnum});
+                    log.debug("    * Roughness: {d}", .{property.value.fnum});
                     material.roughness = property.value.fnum;
                 },
                 c.m3dp_Pm => {
-                    std.log.debug("    * Metallic: {d}", .{property.value.fnum});
+                    log.debug("    * Metallic: {d}", .{property.value.fnum});
                     material.metallic = property.value.fnum;
                 },
                 c.m3dp_Ni => {
-                    std.log.debug("    * Index of Refaction: {d}", .{property.value.fnum});
+                    log.debug("    * Index of Refaction: {d}", .{property.value.fnum});
                     material.index_of_refraction = property.value.fnum;
                 },
                 else => {
-                    std.log.debug("    * {} = {}", .{ property.type, property.value });
+                    log.debug("    * {} = {}", .{ property.type, property.value });
                 },
             }
         }
@@ -131,8 +138,6 @@ fn loadM3D(world: *World, entity: ecs.EntityID, allocator: std.mem.Allocator, da
         try world.entities.setComponent(entity, .mesh_renderer, .material, material);
         break; // TODO: Support multiple materials?
     }
-
-    // return vertex_writer;
 }
 
 /// Converts a packed ABGR color into a float vector

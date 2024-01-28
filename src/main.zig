@@ -33,7 +33,6 @@ pub fn init(app: *App) !void {
 
     try app.world.send(null, .init, .{app.allocator});
 
-    // const mesh = try Model.load(app.allocator, "assets/cube.m3d");
     app.model = try app.world.entities.new();
     try app.world.entities.setComponent(app.model, .mesh_renderer, .transform, .{
         .position = .{ 0, 0, 0 },
@@ -41,23 +40,19 @@ pub fn init(app: *App) !void {
         .scale = .{ 1, 1, 1 },
     });
     try model_loader.loadModel(&app.world, app.model, app.allocator, "assets/cube.m3d");
-    // try app.world.entities.setComponent(app.model, .mesh_renderer, .mesh, mesh);
 
-    const mesh2 = try Model.load(app.allocator, "assets/dragon.obj");
     app.model2 = try app.world.entities.new();
     try app.world.entities.setComponent(app.model2, .mesh_renderer, .transform, .{
         .position = .{ 0, 0, 0 },
         .rotation = .{ 0, 0, std.math.degreesToRadians(f32, 22.0) },
         .scale = .{ 0.2, 0.2, 0.2 },
     });
-    try app.world.entities.setComponent(app.model2, .mesh_renderer, .mesh, mesh2);
+    try model_loader.loadModel(&app.world, app.model2, app.allocator, "assets/dragon.m3d");
 }
 
 pub fn deinit(app: *App) void {
-    const mesh = app.world.entities.getComponent(app.model, .mesh_renderer, .mesh).?;
-    mesh.deinit(app.allocator);
-    const mesh2 = app.world.entities.getComponent(app.model2, .mesh_renderer, .mesh).?;
-    mesh2.deinit(app.allocator);
+    app.world.entities.getComponent(app.model, .mesh_renderer, .mesh).?.deinit(app.allocator);
+    app.world.entities.getComponent(app.model2, .mesh_renderer, .mesh).?.deinit(app.allocator);
 
     try app.world.send(null, .deinit, .{app.allocator});
 
