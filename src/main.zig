@@ -9,13 +9,14 @@ const logging = @import("util/colored_logging.zig");
 pub const App = @This();
 
 const World = @import("modules/Engine.zig").World;
+const Transform = @import("components/Transform.zig");
 
 gpa: std.heap.GeneralPurposeAllocator(.{}),
 allocator: std.mem.Allocator,
 arena: std.heap.ArenaAllocator,
 
-model: ecs.EntityID,
-model2: ecs.EntityID,
+cubes: [3]ecs.EntityID,
+plane: ecs.EntityID,
 
 world: World,
 
@@ -35,26 +36,39 @@ pub fn init(app: *App) !void {
 
     try app.world.send(null, .init, .{app.allocator});
 
-    app.model = try app.world.entities.new();
-    try app.world.entities.setComponent(app.model, .mesh_renderer, .transform, .{
+    for (&app.cubes) |*cube| {
+        cube.* = try app.world.entities.new();
+        try model_loader.loadModel(&app.world, cube.*, app.allocator, "assets/cube.m3d");
+    }
+    try Transform.addToEntity(&app.world, app.cubes[0], .{
         .position = .{ 0, 0, 0 },
-        .rotation = .{ 0, 0, 0 },
-        .scale = .{ 1, 1, 1 },
     });
-    try model_loader.loadModel(&app.world, app.model, app.allocator, "assets/cube.m3d");
+    try Transform.addToEntity(&app.world, app.cubes[1], .{
+        .position = .{ 2, 4, 3 },
+        .scale = .{ 3, 2, 1 },
+    });
+    try Transform.addToEntity(&app.world, app.cubes[2], .{
+        .position = .{ 6, 9, 4.20 },
+        .rotation = .{ 30, 20, 10 },
+    });
+    try Transform.addToEntity(&app.world, app.cubes[3], .{
+        .position = .{ 2, 2, 2 },
+        .scale = .{ 3, 2, 1 },
+        .rotation = .{ 30, 20, 10 },
+    });
 
-    app.model2 = try app.world.entities.new();
-    try app.world.entities.setComponent(app.model2, .mesh_renderer, .transform, .{
-        .position = .{ 0, 0, 0 },
-        .rotation = .{ 0, 0, std.math.degreesToRadians(f32, 22.0) },
-        .scale = .{ 0.2, 0.2, 0.2 },
+    app.plane = try app.world.entities.new();
+    try Transform.addToEntity(&app.world, app.plane, .{
+        .scale = .{ 3, 3, 3 },
     });
-    try model_loader.loadModel(&app.world, app.model2, app.allocator, "assets/dragon.m3d");
+    try model_loader.loadModel(&app.world, app.plane, app.allocator, "assets/plane.m3d");
 }
 
 pub fn deinit(app: *App) void {
-    app.world.entities.getComponent(app.model, .mesh_renderer, .mesh).?.deinit(app.allocator);
-    app.world.entities.getComponent(app.model2, .mesh_renderer, .mesh).?.deinit(app.allocator);
+    for (app.cubes) |cube| {
+        app.world.entities.getComponent(cube, .mesh_renderer, .mesh).?.deinit(app.allocator);
+    }
+    app.world.entities.getComponent(app.plane, .mesh_renderer, .mesh).?.deinit(app.allocator);
 
     try app.world.send(null, .deinit, .{app.allocator});
 
@@ -71,14 +85,6 @@ pub fn update(app: *App) !bool {
 
         try app.world.send(null, .handleEvent, .{event});
     }
-
-    var transform = app.world.entities.getComponent(app.model, .mesh_renderer, .transform).?;
-    transform.rotation[1] += std.math.degreesToRadians(f32, 45.0) * core.delta_time;
-    try app.world.entities.setComponent(app.model, .mesh_renderer, .transform, transform);
-
-    transform = app.world.entities.getComponent(app.model2, .mesh_renderer, .transform).?;
-    transform.rotation[0] += std.math.degreesToRadians(f32, -11.0) * core.delta_time;
-    try app.world.entities.setComponent(app.model2, .mesh_renderer, .transform, transform);
 
     try app.world.send(null, .update, .{app.arena.allocator()});
     _ = app.arena.reset(.retain_capacity);
