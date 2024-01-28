@@ -3,6 +3,7 @@ const ecs = @import("ecs");
 const core = @import("mach-core");
 
 const Model = @import("model.zig");
+const model_loader = @import("util/model_loader.zig");
 
 pub const App = @This();
 
@@ -32,14 +33,15 @@ pub fn init(app: *App) !void {
 
     try app.world.send(null, .init, .{app.allocator});
 
-    const mesh = try Model.load(app.allocator, "assets/cube.m3d");
+    // const mesh = try Model.load(app.allocator, "assets/cube.m3d");
     app.model = try app.world.entities.new();
     try app.world.entities.setComponent(app.model, .mesh_renderer, .transform, .{
         .position = .{ 0, 0, 0 },
         .rotation = .{ 0, 0, 0 },
         .scale = .{ 1, 1, 1 },
     });
-    try app.world.entities.setComponent(app.model, .mesh_renderer, .mesh, mesh);
+    try model_loader.loadModel(&app.world, app.model, app.allocator, "assets/cube.m3d");
+    // try app.world.entities.setComponent(app.model, .mesh_renderer, .mesh, mesh);
 
     const mesh2 = try Model.load(app.allocator, "assets/dragon.obj");
     app.model2 = try app.world.entities.new();

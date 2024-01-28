@@ -5,7 +5,7 @@ const zm = @import("zmath");
 const m3d = @import("model3d");
 
 const m = @import("math");
-const VertexWriter = @import("vertex_writer.zig").VertexWriter;
+const VertexWriter = @import("util/vertex_writer.zig").VertexWriter;
 
 const Mesh = @import("components/Mesh.zig");
 

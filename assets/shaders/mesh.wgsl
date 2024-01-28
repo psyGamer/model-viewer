@@ -5,6 +5,12 @@ struct Uniforms {
     normal: mat3x3<f32>,
     camPos: vec3<f32>,
 };
+struct Material {
+    diffuse_color : vec3<f32>,
+    ambiant_color : vec3<f32>,
+    specular_color : vec3<f32>,
+    specular_exponent : f32,
+}
 
 // Vertex layout for reference
 // struct Vertex {
@@ -13,9 +19,10 @@ struct Uniforms {
 // };
 
 @binding(0) @group(0) var<uniform> uniforms : Uniforms;
-@binding(1) @group(0) var<storage, read> indices : array<u32>;
-@binding(2) @group(0) var<storage, read> positions : array<vec3<f32>>;
-@binding(3) @group(0) var<storage, read> normals : array<vec3<f32>>;
+@binding(1) @group(0) var<uniform> material : Material;
+@binding(2) @group(0) var<storage, read> indices : array<u32>;
+@binding(3) @group(0) var<storage, read> positions : array<vec3<f32>>;
+@binding(4) @group(0) var<storage, read> normals : array<vec3<f32>>;
 
 struct VertexInput {
     @builtin(vertex_index) VertexID : u32
@@ -60,9 +67,10 @@ struct FragmentInput {
     
     let viewDir = normalize(uniforms.camPos - frag.Position);
     let halfwayDir = normalize(viewDir + lightDir);
-    let specular = pow(max(0, dot(viewDir, halfwayDir)), 64);
+    let specular = pow(max(0, dot(viewDir, halfwayDir)), material.specular_exponent) * 0.25;
     
-    return vec4<f32>(vec3<f32>(ambiance + diffuse + specular * 0.25), 1.0);
+    // return vec4<f32>(material.diffuse_color, 1.0);
+    return vec4<f32>((ambiance + diffuse + specular) * material.diffuse_color, 1.0);
 }
 
 @fragment fn frag_main_wireframe() -> @location(0) vec4<f32> {

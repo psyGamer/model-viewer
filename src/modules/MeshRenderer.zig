@@ -9,6 +9,7 @@ const Camera = @import("../camera.zig");
 
 const Transform = @import("../components/Transform.zig");
 const Mesh = @import("../components/Mesh.zig");
+const Material = @import("../components/material.zig").Material;
 
 const World = @import("Engine.zig").World;
 const MeshRenderer = ecs.Module(@This());
@@ -17,6 +18,7 @@ pub const name = .mesh_renderer;
 pub const components = struct {
     pub const transform = Transform;
     pub const mesh = Mesh;
+    pub const material = Material;
 };
 const log = std.log.scoped(name);
 
@@ -28,11 +30,12 @@ const MeshCache = struct {
     vertex_buffers: [@typeInfo(Mesh.Vertex).Struct.fields.len]*gpu.Buffer,
     index_buffer: *gpu.Buffer,
     uniform_buffer: *gpu.Buffer,
+    material_buffer: *gpu.Buffer,
     bind_group: *gpu.BindGroup,
 };
 const MeshCacheMap = std.HashMap(Mesh, MeshCache, Mesh.HashmapContext, std.hash_map.default_max_load_percentage);
 
-const UniformBufferObject = struct {
+const UniformBufferObject = extern struct {
     model: m.Mat4,
     view: m.Mat4,
     proj: m.Mat4,
@@ -60,7 +63,8 @@ pub fn init(world: *World, allocator: std.mem.Allocator) !void {
 
     comptime var entries: []const gpu.BindGroupLayout.Entry = &.{
         gpu.BindGroupLayout.Entry.buffer(0, .{ .vertex = true, .fragment = true }, .uniform, false, @sizeOf(UniformBufferObject)),
-        gpu.BindGroupLayout.Entry.buffer(1, .{ .vertex = true }, .read_only_storage, false, @sizeOf(u32)),
+        gpu.BindGroupLayout.Entry.buffer(1, .{ .vertex = true, .fragment = true }, .uniform, false, @sizeOf(Material)),
+        gpu.BindGroupLayout.Entry.buffer(2, .{ .vertex = true }, .read_only_storage, false, @sizeOf(u32)),
     };
     inline for (@typeInfo(Mesh.Vertex).Struct.fields) |field| {
         entries = entries ++ comptime [_]gpu.BindGroupLayout.Entry{
@@ -314,14 +318,18 @@ pub fn draw(world: *World, _: std.mem.Allocator) !void {
     defer encoder.release();
 
     // Update all mesh caches as required
-    var query = world.entities.query(.{ .all = &.{.{
-        .mesh_renderer = &.{ .transform, .mesh },
-    }} });
+    var query = world.entities.query(.{
+        .all = &.{
+            // .{ .mesh_renderer = &.{ .transform, .mesh } },
+            .{ .mesh_renderer = &.{ .transform, .mesh, .material } },
+        },
+    });
     while (query.next()) |archetype| {
         const transforms: []Transform = archetype.slice(.mesh_renderer, .transform);
         const meshes: []Mesh = archetype.slice(.mesh_renderer, .mesh);
+        const materials: []Material = archetype.slice(.mesh_renderer, .material);
 
-        for (transforms, meshes) |transform, mesh| {
+        for (transforms, meshes, materials) |transform, mesh, material| {
             var ubo: UniformBufferObject = .{
                 .model = m.batchMul(.{
                     m.createScaleMatrix(transform.scale[0], transform.scale[1], transform.scale[2]),
@@ -381,11 +389,21 @@ pub fn draw(world: *World, _: std.mem.Allocator) !void {
                 @memcpy(uniform_mapped, &[_]UniformBufferObject{ubo});
                 mesh_cache.uniform_buffer.unmap();
 
-                var entries: [2 + @typeInfo(Mesh.Vertex).Struct.fields.len]gpu.BindGroup.Entry = undefined;
+                mesh_cache.material_buffer = core.device.createBuffer(&.{
+                    .usage = .{ .uniform = true, .copy_dst = true },
+                    .size = @sizeOf(Material),
+                    .mapped_at_creation = .true,
+                });
+                const material_mapped = mesh_cache.material_buffer.getMappedRange(Material, 0, 1).?;
+                @memcpy(material_mapped, &[_]Material{material});
+                mesh_cache.material_buffer.unmap();
+
+                var entries: [3 + @typeInfo(Mesh.Vertex).Struct.fields.len]gpu.BindGroup.Entry = undefined;
                 entries[0] = gpu.BindGroup.Entry.buffer(0, mesh_cache.uniform_buffer, 0, @sizeOf(UniformBufferObject));
-                entries[1] = gpu.BindGroup.Entry.buffer(1, mesh_cache.index_buffer, 0, mesh.indices.len * @sizeOf(u32));
+                entries[1] = gpu.BindGroup.Entry.buffer(1, mesh_cache.material_buffer, 0, @sizeOf(Material));
+                entries[2] = gpu.BindGroup.Entry.buffer(2, mesh_cache.index_buffer, 0, mesh.indices.len * @sizeOf(u32));
                 inline for (@typeInfo(Mesh.Vertex).Struct.fields, 0..) |field, i| {
-                    entries[2 + i] = gpu.BindGroup.Entry.buffer(2 + i, mesh_cache.vertex_buffers[i], 0, mesh.vertices.len * @sizeOf(field.type));
+                    entries[3 + i] = gpu.BindGroup.Entry.buffer(3 + i, mesh_cache.vertex_buffers[i], 0, mesh.vertices.len * @sizeOf(field.type));
                 }
                 mesh_cache.bind_group = core.device.createBindGroup(&gpu.BindGroup.Descriptor.init(.{
                     .layout = mesh_renderer.bind_group_layout,
