@@ -8,7 +8,6 @@ pub fn build(b: *std.Build) !void {
     const optimize = b.standardOptimizeOption(.{});
 
     const mach_core_dep = b.dependency("mach_core", .{});
-    const zmath_dep = b.anonymousDependency("deps/zmath", @import("deps/zmath/build.zig"), .{});
     const model3d_dep = b.dependency("mach_model3d", .{});
     const ecs_dep = b.dependency("zig_ecs", .{});
 
@@ -16,7 +15,6 @@ pub fn build(b: *std.Build) !void {
         .root_source_file = .{ .path = "src/root.zig" },
         .imports = &.{
             .{ .name = "mach-core", .module = mach_core_dep.module("mach-core") },
-            .{ .name = "zmath", .module = zmath_dep.module("zmath") },
             .{ .name = "model3d", .module = model3d_dep.module("mach-model3d") },
             .{ .name = "ecs", .module = ecs_dep.module("zig-ecs") },
 
