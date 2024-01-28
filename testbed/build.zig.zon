@@ -1,0 +1,12 @@
+.{
+    .name = "testbed",
+    .version = "0.0.0",
+
+    .dependencies = .{
+        .model_viewer = .{
+            .path = "..",
+        },
+    },
+
+    .paths = .{""},
+}

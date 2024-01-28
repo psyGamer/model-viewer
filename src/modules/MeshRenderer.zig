@@ -11,6 +11,7 @@ const Transform = @import("../components/Transform.zig");
 const Mesh = @import("../components/Mesh.zig");
 const Material = @import("../components/material.zig").Material;
 
+const Engine = @import("engine");
 const MeshRenderer = @This();
 
 const log = std.log.scoped(.mesh_renderer);
@@ -79,7 +80,7 @@ pub fn init(allocator: std.mem.Allocator) !MeshRenderer {
         .depth_compare = .less,
     };
 
-    const file = try std.fs.cwd().openFile("assets/shaders/mesh.wgsl", .{});
+    const file = try std.fs.cwd().openFile("assets/internal/shaders/mesh.wgsl", .{});
     defer file.close();
 
     const data = try file.readToEndAllocOptions(allocator, std.math.maxInt(usize), null, @alignOf(u8), 0);
@@ -173,7 +174,7 @@ pub fn init(allocator: std.mem.Allocator) !MeshRenderer {
     };
 }
 
-pub fn deinit(mesh_renderer: *MeshRenderer, _: std.mem.Allocator) void {
+pub fn deinit(mesh_renderer: *MeshRenderer) void {
     log.info("Deinitializing Mesh Renderer...", .{});
 
     mesh_renderer.pipeline.release();
@@ -202,7 +203,7 @@ pub fn deinit(mesh_renderer: *MeshRenderer, _: std.mem.Allocator) void {
     mesh_renderer.mesh_cache.deinit();
 }
 
-pub fn handleEvent(mesh_renderer: *MeshRenderer, event: core.Event) !void {
+pub fn handleEvent(mesh_renderer: *MeshRenderer, event: core.Event) void {
     switch (event) {
         .key_press => |ev| {
             switch (ev.key) {
@@ -259,9 +260,9 @@ pub fn handleEvent(mesh_renderer: *MeshRenderer, event: core.Event) !void {
     }
 }
 
-pub fn update(mesh_renderer: *MeshRenderer, _: *ecs.Registry, _: std.mem.Allocator) !void {
+pub fn update(mesh_renderer: *MeshRenderer, _: *Engine) !void {
     // Camera movement
-    const camera_move_speed: m.Vec3 = @splat((@as(f32, if (core.keyPressed(.left_shift)) 10 else 3)) * core.delta_time);
+    const camera_move_speed: m.Vec3 = @splat((@as(f32, if (core.keyPressed(.f)) 10 else 3)) * core.delta_time);
     if (core.keyPressed(.w)) mesh_renderer.camera.position += mesh_renderer.camera.front * camera_move_speed;
     if (core.keyPressed(.s)) mesh_renderer.camera.position -= mesh_renderer.camera.front * camera_move_speed;
     if (core.keyPressed(.d)) mesh_renderer.camera.position += mesh_renderer.camera.right * camera_move_speed;
@@ -278,7 +279,7 @@ pub fn update(mesh_renderer: *MeshRenderer, _: *ecs.Registry, _: std.mem.Allocat
     mesh_renderer.camera.updateVectors();
 }
 
-pub fn draw(mesh_renderer: *MeshRenderer, reg: *ecs.Registry, _: std.mem.Allocator) !void {
+pub fn draw(mesh_renderer: *MeshRenderer, engine: *Engine) !void {
     const back_buffer_view = core.swap_chain.getCurrentTextureView().?;
     defer back_buffer_view.release();
 
@@ -302,7 +303,7 @@ pub fn draw(mesh_renderer: *MeshRenderer, reg: *ecs.Registry, _: std.mem.Allocat
     defer encoder.release();
 
     // Update all mesh caches as required
-    var view = reg.view(.{ Transform, Mesh, Material }, .{});
+    var view = engine.reg.view(.{ Transform, Mesh, Material }, .{});
     var iter = view.entityIterator();
     while (iter.next()) |entity| {
         const transform = view.getConst(Transform, entity);

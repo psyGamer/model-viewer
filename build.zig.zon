@@ -17,6 +17,22 @@
             .url = "git+https://github.com/psyGamer/zig-ecs.git#ce3963df8e6f0aa323f4e84877bd6d5add876e32",
             .hash = "12209f1207a78a57d71cabf3aca488bc1a44da503d72621be3427187adbba08288cd",
         },
+
+        // Taken from Mach-Core, since transitive dependencies can't be included in the build script
+        .mach_sysjs = .{
+            .url = "https://pkg.machengine.org/mach-sysjs/eeef024f79beae189b7a4ed85e64ed076e76d538.tar.gz",
+            .hash = "1220db6845ce34743ae2a1ab0222efc942496adde2736c20e3443d4fde4ef64b11b9",
+        },
+        .mach_gpu = .{
+            .url = "https://pkg.machengine.org/mach-gpu/7f6792dbc5cd41da5f54b322b6d5be79d6dda2f1.tar.gz",
+            .hash = "122044bcebd28b7d54fb40cbebc04ef6bab0a385952e3193bcf90b37e062ce382495",
+        },
     },
-    .paths = .{""},
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "assets",
+        "include",
+    },
 }

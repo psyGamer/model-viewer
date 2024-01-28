@@ -1,10 +1,14 @@
-const std = @import("std");
-const testing = std.testing;
+pub const Engine = @import("engine");
 
-export fn add(a: i32, b: i32) i32 {
-    return a + b;
-}
+// Modules
+pub const MeshRenderer = @import("modules/MeshRenderer.zig");
 
-test "basic add functionality" {
-    try testing.expect(add(3, 7) == 10);
-}
+// Components
+pub const Transform = @import("components/Transform.zig");
+pub const Mesh = @import("components/Mesh.zig");
+pub const Material = @import("components/material.zig").Material;
+
+// Utils
+pub const random = @import("util/random.zig");
+pub const model_loader = @import("util/model_loader.zig");
+pub const colored_logging = @import("util/colored_logging.zig");
