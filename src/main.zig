@@ -4,6 +4,7 @@ const core = @import("mach-core");
 
 const Model = @import("model.zig");
 const model_loader = @import("util/model_loader.zig");
+const logging = @import("util/colored_logging.zig");
 
 pub const App = @This();
 
@@ -20,6 +21,7 @@ world: World,
 
 pub const std_options = struct {
     pub const log_level = .debug;
+    pub const logFn = logging.colorizedLogging;
 };
 
 pub fn init(app: *App) !void {
